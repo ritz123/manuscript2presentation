@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Usage:
-#   ./run.sh <slides.canvas.tsx> [OPTIONS]   → narrated MP4
-#   ./run.sh <slides.canvas.tsx> --engine kokoro
-#   ./run.sh <slides.canvas.tsx> --output /path/to/out.mp4
+#   ./run.sh <slides.pptx> [OPTIONS]   → narrated MP4
+#   ./run.sh <slides.yaml> [OPTIONS]
+#   ./run.sh <slides.canvas.tsx> [OPTIONS]
 #   ./run.sh speak "Hello world"
 #   ./run.sh list-voices --engine kokoro
 
@@ -20,7 +20,7 @@ OUTPUT_DIR="$SCRIPT_DIR/output"
 
 if [[ ! -x "$T2S" ]]; then
     echo "Setting up environment (first run)..."
-    uv pip install $PYPI ollama pyttsx3 typer rich soundfile numpy click kokoro-onnx "misaki[en]" python-pptx pypdf imageio-ffmpeg pillow
+    uv pip install $PYPI ollama pyttsx3 typer rich soundfile numpy click kokoro-onnx "misaki[en]" python-pptx pypdf imageio-ffmpeg pillow pyyaml
     uv pip install $PYPI -e .
     echo ""
     echo "Ready. Kokoro model files (~300 MB) will be downloaded on first speak."
@@ -39,25 +39,28 @@ _has_flag() {
 # ── help ──────────────────────────────────────────────────────────────────────
 if [[ "$COMMAND" == "--help" || "$COMMAND" == "-h" || -z "$COMMAND" ]]; then
     cat <<'EOF'
-Usage: ./run.sh <slides.canvas.tsx> [OPTIONS]
+Usage: ./run.sh <slides> [OPTIONS]
        ./run.sh COMMAND [ARGS...]
 
-Generate a narrated MP4 video from a Canvas presentation:
+Generate a narrated MP4 video from a slide deck.
+Accepted formats: .pptx  .pdf  .yaml  .tsx
 
-  ./run.sh slides.canvas.tsx
+  ./run.sh slides.pptx
       → output/<timestamp>_slides.mp4  (auto-timestamped)
 
-  ./run.sh slides.canvas.tsx --engine kokoro
+  ./run.sh slides.pptx --engine kokoro
       Use the high-quality neural voice (recommended).
 
-  ./run.sh slides.canvas.tsx --engine kokoro --voice bf_emma
+  ./run.sh slides.pptx --engine kokoro --voice bf_emma
       Choose a specific voice (see: ./run.sh list-voices --engine kokoro).
 
-  ./run.sh slides.canvas.tsx --slides 1-5
+  ./run.sh slides.pptx --slides 1-5
       Render only slides 1 through 5.
 
-  ./run.sh slides.canvas.tsx --output ~/Desktop/talk.mp4
+  ./run.sh slides.pptx --output ~/Desktop/talk.mp4
       Save to a specific path instead of output/.
+
+  Same syntax works for .pdf, .yaml, and .tsx files.
 
 Other commands:
   ./run.sh speak "Hello world"
@@ -68,11 +71,15 @@ EOF
     exit 0
 fi
 
-# ── *.tsx → narrated MP4 ──────────────────────────────────────────────────────
-if [[ "$COMMAND" == *.tsx ]]; then
+# ── slide decks → narrated MP4 ───────────────────────────────────────────────
+if [[ "$COMMAND" == *.yaml || "$COMMAND" == *.yml || "$COMMAND" == *.tsx || \
+      "$COMMAND" == *.pptx || "$COMMAND" == *.pdf ]]; then
     if ! _has_flag "--output" "$@" && ! _has_flag "-o" "$@"; then
         mkdir -p "$OUTPUT_DIR"
-        STEM="$(basename "${COMMAND%.canvas.tsx}")"
+        STEM="$(basename "$COMMAND")"
+        STEM="${STEM%.canvas.tsx}"; STEM="${STEM%.tsx}"
+        STEM="${STEM%.yaml}"; STEM="${STEM%.yml}"
+        STEM="${STEM%.pptx}"; STEM="${STEM%.pdf}"
         AUTO_SAVE="$OUTPUT_DIR/${TIMESTAMP}_${STEM}.mp4"
         echo "Video → $AUTO_SAVE"
         exec "$T2S" canvas-video "$@" --output "$AUTO_SAVE"

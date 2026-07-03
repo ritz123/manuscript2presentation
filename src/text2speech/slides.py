@@ -13,6 +13,7 @@ class Slide:
     body: str           # all non-title text joined
     notes: str          # presenter notes
     raw_lines: list[str] = field(default_factory=list)
+    images: list[bytes] = field(default_factory=list)   # raw image blobs (PNG/JPEG)
 
     def spoken_text(self, include_notes: bool = False) -> str:
         """Return the text that should be spoken for this slide."""
@@ -48,15 +49,46 @@ def read_pptx(path: Path) -> list[Slide]:
     prs = Presentation(str(path))
     slides: list[Slide] = []
 
+    MSO_PICTURE = 13  # MSO_SHAPE_TYPE.PICTURE
+
     for i, slide in enumerate(prs.slides, 1):
         title = ""
         body_lines: list[str] = []
         notes_text = ""
+        image_blobs: list[bytes] = []
 
-        # Extract text from shapes
         for shape in slide.shapes:
+            # Collect picture blobs
+            if shape.shape_type == MSO_PICTURE:
+                try:
+                    image_blobs.append(shape.image.blob)
+                except Exception:
+                    pass
+                continue
+
+            # Named title shape (produced by create_pptx.py blank-layout slides)
+            if getattr(shape, "name", "") == "slide_title":
+                if shape.has_text_frame and not title:
+                    title = _clean(shape.text_frame.text)
+                continue
+
+            # Some shapes embed an image via a picture placeholder (ph_type 18)
+            try:
+                ph = shape.placeholder_format
+            except (ValueError, AttributeError):
+                ph = None
+            ph_type = getattr(ph, "type", None)
+
+            if ph_type == 18:   # OBJECT / picture placeholder
+                try:
+                    image_blobs.append(shape.image.blob)
+                except Exception:
+                    pass
+                continue
+
             if not shape.has_text_frame:
                 continue
+
             shape_text = "\n".join(
                 _clean(para.text)
                 for para in shape.text_frame.paragraphs
@@ -64,11 +96,7 @@ def read_pptx(path: Path) -> list[Slide]:
             )
             if not shape_text:
                 continue
-            # Heuristic: title placeholder or largest text on slide = title
-            if shape.shape_type == 13:  # MSO_SHAPE_TYPE.PICTURE
-                continue
-            ph = getattr(shape, "placeholder_format", None)
-            ph_type = getattr(ph, "type", None)
+
             if ph_type in (1, 13, 15):  # TITLE, CENTER_TITLE, SUBTITLE
                 if not title:
                     title = _clean(shape.text_frame.text)
@@ -86,6 +114,7 @@ def read_pptx(path: Path) -> list[Slide]:
             body="\n".join(body_lines),
             notes=notes_text,
             raw_lines=[title] + body_lines,
+            images=image_blobs,
         ))
 
     return slides

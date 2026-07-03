@@ -9,8 +9,13 @@ wheels/
 # Virtual environments
 .venv
 
-# Generated audio output
+# Generated audio/video output
 output/
+
+# Large binary and generated intermediate files
+*.pdf
+*.pptx
+plan.json
 
 # uv lock file (optional to commit, exclude for portability)
 uv.lock

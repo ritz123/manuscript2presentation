@@ -544,16 +544,30 @@ def canvas_video(
       t2s canvas-video slides.canvas.tsx --output my_video.mp4 --slides 1-5
     """
     import tempfile, shutil
-    from text2speech.canvas_video import slides_from_tsx, generate_audio, render_slide, assemble_video
+    from text2speech.canvas_video import (
+        slides_from_tsx, slides_from_yaml, slides_from_presentation,
+        generate_audio, render_slide, assemble_video,
+    )
 
     if not tsx_file.exists():
         _abort(f"File not found: {tsx_file}")
 
-    all_slides = slides_from_tsx(tsx_file)
-    if not all_slides:
-        _abort("No slides found in the canvas file.")
+    suffix = tsx_file.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        all_slides = slides_from_yaml(tsx_file)
+        stem = tsx_file.stem
+    elif suffix == ".tsx":
+        all_slides = slides_from_tsx(tsx_file)
+        stem = tsx_file.stem.replace(".canvas", "")
+    elif suffix in (".pptx", ".pdf"):
+        all_slides = slides_from_presentation(tsx_file)
+        stem = tsx_file.stem
+    else:
+        _abort(f"Unsupported format: {suffix!r}. Pass a .yaml, .pptx, .pdf, or .tsx file.")
 
-    stem = tsx_file.stem.replace(".canvas", "")
+    if not all_slides:
+        _abort("No slides found in the file.")
+
     _output = output or (tsx_file.parent / f"{stem}.mp4")
 
     # ── filter slides ────────────────────────────────────────────────────────
@@ -599,7 +613,7 @@ def canvas_video(
         for spec in selected:
             img_path = img_dir / f"slide_{spec.index:02d}.png"
             with console.status(f"  Slide {spec.index}: {spec.title[:50]}…"):
-                render_slide(spec, img_path)
+                render_slide(spec, img_path, total=len(selected))
             console.print(f"  [green]✓[/] Slide {spec.index} → {img_path.name}")
 
         # ── generate audio ───────────────────────────────────────────────────
@@ -658,7 +672,7 @@ def canvas_mp3(
 
     [bold]Examples:[/]
 
-      t2s canvas-mp3 ashby-how-to-write-paper.canvas.tsx
+      t2s canvas-mp3 slides.pptx
 
       t2s canvas-mp3 slides.canvas.tsx --out-dir ./mp3s --combined all.mp3
 
@@ -668,18 +682,28 @@ def canvas_mp3(
     """
     import tempfile
     from text2speech.canvas_video import (
-        slides_from_tsx, generate_audio, wav_to_mp3, concat_mp3s,
+        slides_from_tsx, slides_from_yaml, slides_from_presentation,
+        generate_audio, wav_to_mp3, concat_mp3s,
     )
 
     if not tsx_file.exists():
         _abort(f"File not found: {tsx_file}")
-    if not tsx_file.suffix == ".tsx":
-        _abort(f"Expected a *.tsx file, got: {tsx_file}")
 
-    # ── discover slides ──────────────────────────────────────────────────────
-    all_slides = slides_from_tsx(tsx_file)
+    suffix = tsx_file.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        all_slides = slides_from_yaml(tsx_file)
+        stem = tsx_file.stem
+    elif suffix == ".tsx":
+        all_slides = slides_from_tsx(tsx_file)
+        stem = tsx_file.stem.replace(".canvas", "")
+    elif suffix in (".pptx", ".pdf"):
+        all_slides = slides_from_presentation(tsx_file)
+        stem = tsx_file.stem
+    else:
+        _abort(f"Unsupported format: {suffix!r}. Pass a .yaml, .pptx, .pdf, or .tsx file.")
+
     if not all_slides:
-        _abort("No slides found in the canvas file.")
+        _abort("No slides found in the file.")
 
     # ── filter by range ──────────────────────────────────────────────────────
     if slide_range:

@@ -1,5 +1,5 @@
 """
-Render the Ashby 'How to Write a Paper' canvas slides into a narrated video or MP3.
+Render slide decks (.pptx, .pdf, .yaml, .tsx) into a narrated video or MP3.
 
 Pipeline (video):
   1. For each slide, render a 1280×720 PNG with Pillow.
@@ -22,15 +22,15 @@ from typing import Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
-# ── colour palette (mirrors Cursor dark theme) ─────────────────────────────
-BG        = (24, 24, 24)       # bg.editor
-CHROME    = (20, 20, 20)       # bg.elevated
-ACCENT    = (89, 156, 231)     # accent.primary
-TEXT_PRI  = (228, 228, 228)    # text.primary  ~90 %
-TEXT_SEC  = (228, 228, 228, 140)  # text.secondary ~55 % – stored as RGBA for blending
-STROKE    = (228, 228, 228, 40)   # stroke.tertiary
-WHITE     = (255, 255, 255)
-DIM       = (160, 160, 160)
+# ── colour palette (light theme) ──────────────────────────────────────────
+BG        = (252, 252, 255)    # off-white slide background
+CHROME    = (235, 237, 243)    # nav bar / chrome areas
+ACCENT    = (37,  99, 235)     # blue accent (darker for contrast on light bg)
+TEXT_PRI  = (18,  18,  28)     # primary text
+TEXT_SEC  = (80,  80, 100)     # secondary text
+STROKE    = (200, 200, 210)    # dividers / borders
+WHITE     = (255, 255, 255)    # pure white (card backgrounds, etc.)
+DIM       = (100, 100, 120)    # de-emphasised text
 
 W, H = 1280, 720
 
@@ -94,324 +94,13 @@ class SlideSpec:
     right_bullets: list[str] = field(default_factory=list)   # optional right column
     quote: str = ""
     narration: str = ""               # text spoken for this slide
+    images: list[bytes] = field(default_factory=list)         # raw PNG/JPEG blobs
 
 
-SLIDES: list[SlideSpec] = [
-    SlideSpec(
-        index=1,
-        title="How to Write a Paper",
-        tag="MIKE ASHBY  |  CAMBRIDGE  |  6TH EDITION 2005",
-        bullets=[
-            "A prescriptive guide for researchers writing their first - or fifth - paper.",
-            "Covers the full journey: from blank page to polished publication.",
-            "Structured like engineering design:",
-            "  Market -> Concept -> Embodiment -> Detail -> End-product.",
-            "9 sections | Appendix with real examples | Checklist",
-        ],
-        narration=(
-            "How to Write a Paper, by Mike Ashby of the Engineering Department at the University "
-            "of Cambridge. This guide, in its sixth edition, offers prescriptive advice for writing "
-            "clear and effective research papers — covering the full journey from a blank page to a "
-            "polished publication, structured around the principles of engineering design."
-        ),
-    ),
-    SlideSpec(
-        index=2,
-        title="1. The Design Process",
-        tag="SECTION 1",
-        bullets=[
-            "Well-written papers are read, remembered, cited.",
-            "Poorly written papers are not.",
-            "",
-            "Five design steps:",
-            "  1. Market Need  - who will read it, and how?",
-            "  2. Concept      - plan before you draft.",
-            "  3. Embodiment   - first draft, facts first.",
-            "  4. Detail       - craft clarity, balance, style.",
-            "  5. End-Product  - layout, headings, figures.",
-        ],
-        narration=(
-            "Ashby opens with a core principle: well-written papers are read, remembered, and cited. "
-            "Poorly written ones are not. Writing a paper is a design activity with five essential steps: "
-            "understand your market, form a concept, produce an embodiment — the first draft — refine the "
-            "details, and deliver a polished end product. Each step depends on the one before."
-        ),
-    ),
-    SlideSpec(
-        index=3,
-        title="2. Know Your Readers",
-        tag="SECTION 2 - THE MARKET",
-        bullets=[
-            "Thesis examiners: all relevant research, background, thinking, conclusions.",
-            "Journal referees: rigour, novelty, concision.",
-            "Funding panels: alignment with priorities, quality, promise.",
-            "Popular audience: intelligent but non-specialist — the hardest to write for.",
-            "",
-            "Write poorly → bore, exasperate, and lose your readers.",
-            "Write well → they respond in the way you plan.",
-        ],
-        narration=(
-            "Section two asks: who are your readers? Your thesis examiners want everything relevant — "
-            "why you did the research, what you found, and what you concluded. Journal referees expect "
-            "rigour and novelty. Funding panels want alignment with their priorities. And a popular "
-            "audience — intelligent but non-specialist — demands the finest-tuned style of all. "
-            "Write poorly, and you lose every one of them."
-        ),
-    ),
-    SlideSpec(
-        index=4,
-        title="3. The Concept Sheet",
-        tag="SECTION 3 - CONCEPT",
-        bullets=[
-            "When you can't write, it's because you don't know what to say.",
-            "",
-            "How to make one:",
-            "  · A3 sheet, landscape orientation.",
-            "  · Title at the top; section headings in boxes.",
-            "  · Ideas, references, figures in bubbles with arrows.",
-            "  · Add to it at any time — it is your road-map.",
-            "",
-            "Breaks writer's block. Lets you see the whole before drafting any part.",
-        ],
-        narration=(
-            "Before writing a single word, make a concept sheet. Take an A3 sheet in landscape mode, "
-            "write a tentative title at the top, then sketch your section headings in boxes. "
-            "Scatter ideas, references, and planned figures as bubbles connected to their sections. "
-            "This simple act breaks writer's block and gives you a road-map of the entire paper "
-            "before the hard work of drafting begins."
-        ),
-    ),
-    SlideSpec(
-        index=5,
-        title="4. Paper Structure - All 12 Sections",
-        tag="SECTION 4 - EMBODIMENT",
-        bullets=[
-            "4.1  Title — meaningful and brief",
-            "4.2  Attribution — names, institute, date",
-            "4.3  Abstract — ≤100 words: motive, method, results, conclusions",
-            "4.4  Introduction — problem, literature, novel contribution",
-            "4.5  Method — sufficient detail to reproduce",
-            "4.6  Results — output only, no interpretation",
-            "4.7  Discussion — principles, models, comparison",
-            "4.8  Conclusion — advances in knowledge",
-            "4.9  Acknowledgements — simple, full names",
-            "4.10 References — complete: name, year, journal, pages",
-            "4.11 Figures — self-contained, titled, captioned, labelled",
-            "4.12 Appendices — essential material that interrupts flow",
-        ],
-        narration=(
-            "A paper has twelve parts: title, attribution, abstract, introduction, method, results, "
-            "discussion, conclusion, acknowledgements, references, figures, and appendices. "
-            "You don't write them in order — draft whichever section you have the clearest ideas "
-            "for first. Get the pieces assembled, then worry about how they fit together."
-        ),
-    ),
-    SlideSpec(
-        index=6,
-        title="Abstract & Introduction",
-        tag="SECTIONS 4.3 & 4.4",
-        bullets=[
-            "Abstract - one sentence each on:",
-            "  - Motive   - Method   - Key results   - Conclusions",
-            "  Target <= 100 words. No waffle. No spurious detail.",
-            "  Imagine you're paying 10p per word.",
-            "",
-            "Introduction - tell the reader:",
-            "  - What is the problem and why is it interesting?",
-            "  - Who has worked on it and what did they do?",
-            "  - What will YOU do that is new?",
-            "  Start with a good first sentence - not a platitude.",
-        ],
-        narration=(
-            "The abstract is your paper in miniature: one sentence each on motive, method, key results, "
-            "and conclusions. Target a hundred words. Imagine you are paying ten pence per word — "
-            "that sharpens the mind. "
-            "The introduction states the problem, reviews the literature briefly, and tells the reader "
-            "exactly what novel contribution you are about to make. Start with a hook, not a platitude."
-        ),
-    ),
-    SlideSpec(
-        index=7,
-        title="Results & Discussion",
-        tag="SECTIONS 4.6 & 4.7",
-        bullets=[
-            "Results - report without interpretation:",
-            "  - All symbols and units defined.",
-            "  - Error bars or confidence limits given.",
-            "  - Concise and economical.",
-            "",
-            "  POOR:   'It is clearly shown in Figure 3 that shear loading",
-            "           had caused cell-walls to suffer ductile fracture...'",
-            "  BETTER: 'Shear loading fractures cell-walls (Figure 3).'",
-            "",
-            "Discussion - extract principles, compare model with data.",
-            "Never mix Results with Discussion.",
-        ],
-        narration=(
-            "Results are reported without interpretation — just the data, with error bars and proper units. "
-            "Discussion is where you extract principles, compare data to theory, and build toward your conclusions. "
-            "Never mix the two. And always prefer brevity: "
-            "'Shear loading fractures cell walls' is far better than a two-line description of what Figure 3 already shows."
-        ),
-    ),
-    SlideSpec(
-        index=8,
-        title="5. Grammar Essentials",
-        tag="SECTION 5",
-        bullets=[
-            "Mess up grammar -> confuse the reader.",
-            "",
-            "'that' vs 'which':",
-            "  'that' limits the noun - no commas.",
-            "    'Computations that were on a Cray were more accurate.'",
-            "    (only the Cray ones, not others)",
-            "  'which' adds a new fact - use commas.",
-            "    'Computations, which were on a Cray, were more accurate.'",
-            "    (all of them happened to be on a Cray)",
-            "",
-            "Compound sentences must balance comparable ideas.",
-            "Never mix major findings with trivial observations.",
-        ],
-        narration=(
-            "Grammar tells the reader the function of words. The most misused distinction is "
-            "that versus which. That limits the noun it qualifies — no commas needed. "
-            "Which introduces an additional fact about the noun — commas required. "
-            "Compound sentences must balance comparable ideas of similar weight. "
-            "Do not link a major finding with an observation that the team went to lunch."
-        ),
-    ),
-    SlideSpec(
-        index=9,
-        title="7. Punctuation",
-        tag="SECTION 7",
-        bullets=[
-            "Full stop  .   Ends declarative sentences.",
-            "Comma      ,   Separates parts that would confuse if they touched.",
-            "Semi-colon ;   Links closely related independent clauses.",
-            "Colon      :   Introduces elaboration - sets up anticipation.",
-            "Dash       --  Sets off a parenthetic aside; introduces a final upshot.",
-            "Hyphen     -   Connects compound words: ball-and-stick, box-girder.",
-            "Apostrophe '   Possession (Sutcliffe's) or contraction (it's = it is).",
-            "               NO apostrophe in 'its' as a possessive.",
-            "Exclamation !  Avoid in scientific writing. Say what you mean directly.",
-            "Parentheses () Embrace asides. Don't let them cloud the main meaning.",
-        ],
-        narration=(
-            "Punctuation orders prose and signals how to interpret it. "
-            "The colon sets up anticipation. The semi-colon links closely related clauses. "
-            "The dash sets off a parenthetic aside or introduces a final summary. "
-            "The apostrophe shows possession or contraction — but never in its as a possessive. "
-            "And the exclamation mark: delete it. Say what you mean directly."
-        ),
-    ),
-    SlideSpec(
-        index=10,
-        title="8. Style - Clarity & Precision",
-        tag="SECTION 8",
-        bullets=[
-            "8.1 Be clear - simple language, short words, familiar words.",
-            "8.3 Define everything - all symbols, all abbreviations.",
-            "8.4 Avoid empty words:",
-            "    Weak qualifiers: very, rather, somewhat, quite.",
-            "    'This very important point' -> 'This point'",
-            "    'The agreement is quite good' -> suggests it is not.",
-            "8.5 Revise and rewrite:",
-            "    Nobody gets it right first time.",
-            "    Some papers go through 8-10 drafts.",
-            "    Put the draft aside for at least 48 hours.",
-        ],
-        narration=(
-            "Style begins with clarity. Use simple words, familiar constructions, short sentences. "
-            "Every word must earn its place. Avoid weak qualifiers — very, quite, rather — they dilute the message. "
-            "'This very important point' becomes simply 'this point'. "
-            "And revise. Nobody gets it right the first time. The most spontaneous-seeming prose "
-            "is often the most rewritten. Let the draft sit for forty-eight hours before returning to it."
-        ),
-    ),
-    SlideSpec(
-        index=11,
-        title="Common Pitfalls to Avoid",
-        tag="SECTIONS 8.6 - 8.8",
-        bullets=[
-            "Overstating: 'This paper questions the basic assumptions of fracture mechanics'",
-            "  -> Fills the reader with mistrust. Let them decide on importance.",
-            "",
-            "Apologising: 'Unfortunately, there was insufficient time to complete...'",
-            "  -> Suggests bad planning. Never, ever, apologise.",
-            "",
-            "Jargon: excludes the intelligent non-specialist. Avoid it.",
-            "",
-            "Patronising: 'The amazingly perceptive comment by Fleck...'",
-            "",
-            "Acronym overload: 'The MEM, analysed by FE, photographed by SEM, by SAM.'",
-            "  -> Minimise acronyms. Find other ways.",
-        ],
-        narration=(
-            "Six pitfalls to avoid. Overstating undermines credibility — let the reader decide on importance. "
-            "Apologising suggests incompetence — never, ever apologise in a paper. "
-            "Jargon excludes the intelligent non-specialist reader. "
-            "Patronising your reader breaks their trust. "
-            "Breezy web-speak says nothing and shows off. "
-            "And an acronym-dense sentence like 'the MEM, analysed by FE, photographed by SEM' is simply unreadable."
-        ),
-    ),
-    SlideSpec(
-        index=12,
-        title="Good Writing Techniques",
-        tag="SECTIONS 8.9 - 8.12",
-        bullets=[
-            "8.9 Good First Sentence:",
-            "   POOR:   'Metal foams are a new class of material attracting interest...'",
-            "   BETTER: 'Metal foams are not as strong as they should be.'",
-            "   -> New fact, new idea, or revealing comparison in the first line.",
-            "",
-            "8.10 Analogies: make the abstract concrete.",
-            "   'Rolling friction is like riding a bicycle through sand.'",
-            "",
-            "8.11 Linking Sentences:",
-            "   End each paragraph with a word the next paragraph picks up.",
-            "   '...we need a material index. A material index is...'",
-            "   -> Reader knows what's coming before they read it.",
-        ],
-        narration=(
-            "Start with a hook, not a platitude. "
-            "'Metal foams are not as strong as they should be' is far better than "
-            "'Metal foams are a new class of material with great potential.' "
-            "Use analogies to make the abstract concrete: rolling friction is like riding a bicycle through sand. "
-            "And link your paragraphs — end each one with a word or phrase that the next one picks up, "
-            "so the reader always knows what is coming before they read it."
-        ),
-    ),
-    SlideSpec(
-        index=13,
-        title="Checklist for Progress",
-        tag="FINAL PAGE OF MANUAL",
-        bullets=[
-            "Concept:    [ ] Make concept sheet",
-            "",
-            "First draft:",
-            "  [ ] Title & attribution    [ ] Abstract",
-            "  [ ] Introduction           [ ] Method",
-            "  [ ] Results                [ ] Discussion",
-            "  [ ] Conclusions            [ ] Acknowledgements",
-            "  [ ] References             [ ] Figures & captions",
-            "",
-            "Edited draft:",
-            "  [ ] Grammar  [ ] Spelling  [ ] Punctuation  [ ] Style",
-            "  [ ] Waffle removed   [ ] All symbols defined",
-            "  [ ] 48-hour rest period observed",
-            "",
-            "Visual: [ ] Layout  [ ] Headings  [ ] Figures  [ ] Legibility",
-        ],
-        narration=(
-            "Finally, use a checklist. First pass: make the concept sheet, then draft all twelve sections. "
-            "Second pass: check grammar, spelling, punctuation, and style. Remove waffle. Define all symbols. "
-            "Then — and this is crucial — put the draft away for at least forty-eight hours "
-            "before returning with fresh eyes to review layout, figures, and visual presentation. "
-            "That pause is what separates a good paper from a great one."
-        ),
-    ),
-]
+# Slides are loaded at runtime from an external file (.pptx, .pdf, .yaml, .tsx).
+# See slides_from_presentation(), slides_from_yaml(), slides_from_tsx() below.
+
+
 
 
 # ── image renderer ─────────────────────────────────────────────────────────
@@ -432,140 +121,268 @@ def _safe(text: str) -> str:
     )
 
 
-def _draw_bullets(
+def _fit_text(
+    text: str,
+    font: "ImageFont.FreeTypeFont",
+    max_w: int,
+    max_lines: int,
+) -> list[str]:
+    """
+    Return at most *max_lines* wrapped lines for *text*.
+    If the text would require more lines, the last kept line gets '...' appended.
+    """
+    lines = _wrap(text, font, max_w)
+    if len(lines) <= max_lines:
+        return lines
+    truncated = lines[:max_lines]
+    # shorten the last kept line to fit the trailing ellipsis
+    last = truncated[-1]
+    dummy = Image.new("RGB", (1, 1))
+    draw  = ImageDraw.Draw(dummy)
+    while last and draw.textlength(last + "...", font=font) > max_w:
+        last = last.rsplit(" ", 1)[0]
+    truncated[-1] = (last + "...").strip()
+    return truncated
+
+
+def _measure_bullets(
+    items: list[str],
+    f_body: "ImageFont.FreeTypeFont",
+    col_w: int,
+    line_h: int,
+    max_lines: int = 2,
+) -> int:
+    """Return total pixel height needed to draw *items* in a column of *col_w*."""
+    total = 0
+    for item in items:
+        raw = _safe(item)
+        if not raw.strip():
+            total += line_h // 2
+            continue
+        is_indented = raw.startswith("  ") or raw.startswith("    ")
+        indent = 28 if is_indented else 0
+        text = raw.lstrip() if is_indented else raw
+        if is_indented and text.startswith("- "):
+            text = text[2:]
+        lines = _fit_text(text, f_body, col_w - indent - 4, max_lines)
+        total += line_h * len(lines)
+    return total
+
+
+def _draw_bullet_column(
     draw: "ImageDraw.ImageDraw",
     items: list[str],
     f_body: "ImageFont.FreeTypeFont",
     x0: int,
     y0: int,
-    max_w: int,
+    col_w: int,
     bottom: int,
     line_h: int,
+    max_lines: int = 2,
 ) -> None:
-    """Draw a list of bullet items starting at (x0, y0), stopping at bottom."""
+    """Draw bullet items in a single column, strictly stopping at *bottom*."""
     y = y0
     for item in items:
-        if y > bottom:
+        if y + line_h > bottom:
             break
         raw = _safe(item)
         if not raw.strip():
             y += line_h // 2
             continue
+
+        is_indented = raw.startswith("  ") or raw.startswith("    ")
         indent = 0
         text = raw
-        is_indented = raw.startswith("  ") or raw.startswith("    ")
+
         if is_indented:
             indent = 28
             text = raw.lstrip()
             if text.startswith("- "):
                 text = text[2:]
-                dot_y = y + line_h // 2 - 4
-                draw.ellipse([x0 + indent - 14, dot_y, x0 + indent - 6, dot_y + 8], fill=ACCENT)
-        elif raw.startswith("[ ]"):
-            indent = 6
-            text = raw.strip()
-        wrapped = _wrap(text, f_body, max_w - indent - 4)
-        for wl in wrapped[:2]:
-            col = TEXT_PRI if not is_indented else DIM
-            draw.text((x0 + indent, y), wl, font=f_body, fill=col)
-            y += line_h
-        if len(wrapped) > 2:
+                cy = y + line_h // 2 - 3
+                draw.ellipse([x0 + indent - 14, cy, x0 + indent - 6, cy + 8], fill=ACCENT)
+            col = DIM
+        else:
+            col = TEXT_PRI
+
+        lines = _fit_text(text, f_body, col_w - indent - 4, max_lines)
+        for ln in lines:
+            if y + line_h > bottom:
+                break
+            draw.text((x0 + indent, y), ln, font=f_body, fill=col)
             y += line_h
 
 
-def render_slide(spec: SlideSpec, out_path: Path) -> None:
+def render_slide(spec: SlideSpec, out_path: Path, total: int = 0) -> None:
     """Render *spec* as a 1280×720 PNG saved to *out_path*."""
     img = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(img)
 
-    # ── fonts (sized for comfortable 1280x720 viewing) ─────────────────────
-    f_nav   = _font(24)
-    f_tag   = _font(28)
-    f_title = _font(80, bold=True)
-    f_foot  = _font(22)
+    MARGIN = 56
+    NAV_H  = 50   # thin nav — no footer, maximise content space
+    BOTTOM = H - 14
+    max_w  = W - 2 * MARGIN
 
-    # Body size adapts: text-heavy slides (> 7 bullets) use a smaller font
-    # and two-column layout; lighter slides use a bigger, more readable size.
-    total_bullets = len(spec.bullets) + len(spec.right_bullets)
-    dense = total_bullets > 7
-    f_body  = _font(34 if dense else 44)
-    line_h  = 44 if dense else 56
-
-    NAV_H  = 62
-    FOOT_H = 54
-    MARGIN = 64
-    TOP    = NAV_H + 18
-    BOTTOM = H - FOOT_H - 10
-
-    # ── nav bar ────────────────────────────────────────────────────────────
+    # ── nav bar ─────────────────────────────────────────────────────────────
     draw.rectangle([0, 0, W, NAV_H], fill=CHROME)
-    draw.line([0, NAV_H, W, NAV_H], fill=(60, 60, 60), width=1)
-    draw.text((28, (NAV_H - 24) // 2), "HOW TO WRITE A PAPER  |  MIKE ASHBY", font=f_nav, fill=DIM)
-    counter = f"{spec.index} / {len(SLIDES)}"
-    cw = draw.textlength(counter, font=f_nav)
-    draw.text((W - 28 - cw, (NAV_H - 24) // 2), counter, font=f_nav, fill=DIM)
+    draw.line([0, NAV_H, W, NAV_H], fill=STROKE, width=1)
+    f_nav = _font(20)
+    label = _safe(spec.tag.upper()) if spec.tag else ""
+    draw.text((MARGIN, (NAV_H - 20) // 2), label, font=f_nav, fill=DIM)
+    n = total if total > 0 else spec.index
+    counter = f"{spec.index} / {n}"
+    cw = int(draw.textlength(counter, font=f_nav))
+    draw.text((W - MARGIN - cw, (NAV_H - 20) // 2), counter, font=f_nav, fill=DIM)
+    # progress bar flush with bottom of nav
+    prog_filled = int(max_w * spec.index / n)
+    draw.rectangle([MARGIN, NAV_H - 4, W - MARGIN, NAV_H], fill=STROKE)
+    draw.rectangle([MARGIN, NAV_H - 4, MARGIN + prog_filled, NAV_H], fill=ACCENT)
 
-    # progress bar
-    bar_w = 200
-    bar_x = (W - bar_w) // 2
-    bar_y = NAV_H - 5
-    draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + 3], fill=(60, 60, 60))
-    filled = int(bar_w * spec.index / len(SLIDES))
-    draw.rectangle([bar_x, bar_y, bar_x + filled, bar_y + 3], fill=ACCENT)
+    y = NAV_H + 18
 
-    if spec.index == 1:
-        draw.rectangle([0, NAV_H, W, NAV_H + 3], fill=ACCENT)
-
-    # ── content ────────────────────────────────────────────────────────────
-    max_body_w = W - 2 * MARGIN
-    y = TOP
-
-    # section tag
+    # ── section tag ─────────────────────────────────────────────────────────
+    f_tag = _font(22)
     if spec.tag:
         draw.text((MARGIN, y), _safe(spec.tag), font=f_tag, fill=ACCENT)
-        y += 38
+        y += 30
 
-    # title (wrap if needed)
-    for line in _wrap(_safe(spec.title), f_title, max_body_w):
-        draw.text((MARGIN, y), line, font=f_title, fill=WHITE)
-        y += 90
-    y += 6
+    # ── title — auto-scale so it always fits in ≤ 2 lines ──────────────────
+    title_text = _safe(spec.title)
+    f_title = _font(72, bold=True)
+    title_lines = _wrap(title_text, f_title, max_w)
+    if len(title_lines) > 2:
+        f_title = _font(56, bold=True)
+        title_lines = _wrap(title_text, f_title, max_w)
+    if len(title_lines) > 2:
+        f_title = _font(44, bold=True)
+        title_lines = _wrap(title_text, f_title, max_w)
 
-    # divider
-    draw.line([MARGIN, y, W - MARGIN, y], fill=(70, 70, 70), width=1)
-    y += 20
+    title_step = int(f_title.size * 1.18)
+    for line in title_lines[:2]:
+        draw.text((MARGIN, y), line, font=f_title, fill=TEXT_PRI)
+        y += title_step
+    y += 10
 
-    # quote
+    # ── divider ─────────────────────────────────────────────────────────────
+    draw.line([MARGIN, y, W - MARGIN, y], fill=STROKE, width=1)
+    y += 16
+
+    body_top = y
+    body_h   = BOTTOM - body_top
+
+    # ── quote (if any) ───────────────────────────────────────────────────────
     if spec.quote:
-        q_text = f'"{_safe(spec.quote)}"'
-        q_lines = _wrap(q_text, f_body, max_body_w - 20)
+        f_q = _font(30)
+        q_lines = _wrap(f'"{_safe(spec.quote)}"', f_q, max_w - 20)
         bar_top = y
         for ql in q_lines[:3]:
-            draw.text((MARGIN + 18, y), ql, font=f_body, fill=DIM)
-            y += line_h
+            draw.text((MARGIN + 18, y), ql, font=f_q, fill=DIM)
+            y += 38
         draw.rectangle([MARGIN, bar_top, MARGIN + 4, y], fill=ACCENT)
-        y += 12
+        y += 10
+        body_top = y
+        body_h = BOTTOM - body_top
 
-    # bullets — single or two-column
-    if spec.right_bullets:
-        col_w = (max_body_w - 24) // 2
-        _draw_bullets(draw, spec.bullets, f_body, MARGIN, y, col_w, BOTTOM, line_h)
-        _draw_bullets(draw, spec.right_bullets, f_body, MARGIN + col_w + 24, y, col_w, BOTTOM, line_h)
-    elif dense:
-        # auto two-column for long single-column lists
-        mid = (len(spec.bullets) + 1) // 2
-        col_w = (max_body_w - 24) // 2
-        _draw_bullets(draw, spec.bullets[:mid], f_body, MARGIN, y, col_w, BOTTOM, line_h)
-        _draw_bullets(draw, spec.bullets[mid:], f_body, MARGIN + col_w + 24, y, col_w, BOTTOM, line_h)
+    # ── decide layout: images present? ──────────────────────────────────────
+    has_images  = bool(spec.images)
+    has_bullets = bool(spec.bullets or spec.right_bullets)
+    IMG_GAP     = 24   # gap between bullet column and image panel
+
+    if has_images and has_bullets:
+        # bullets on left ~55%, images on right ~42%
+        bullet_col_w = int(max_w * 0.55)
+        img_panel_x  = MARGIN + bullet_col_w + IMG_GAP
+        img_panel_w  = W - MARGIN - img_panel_x
+    elif has_images:
+        # no bullets — images fill the whole content area
+        bullet_col_w = 0
+        img_panel_x  = MARGIN
+        img_panel_w  = max_w
     else:
-        _draw_bullets(draw, spec.bullets, f_body, MARGIN, y, max_body_w, BOTTOM, line_h)
+        bullet_col_w = max_w
+        img_panel_x  = 0
+        img_panel_w  = 0
 
-    # ── footer ────────────────────────────────────────────────────────────
-    draw.rectangle([0, H - FOOT_H, W, H], fill=CHROME)
-    draw.line([0, H - FOOT_H, W, H - FOOT_H], fill=(50, 50, 50), width=1)
-    footer = _safe(f"Slide {spec.index}: {spec.title}")
-    fy = H - FOOT_H + (FOOT_H - 22) // 2
-    draw.text((MARGIN, fy), footer, font=f_foot, fill=(110, 110, 110))
+    # ── bullets — adaptive font + two-column when needed ────────────────────
+    if has_bullets:
+        all_b   = spec.bullets
+        right_b = spec.right_bullets
+
+        if right_b:
+            left_items, right_items = all_b, right_b
+            two_col = True
+        elif has_images:
+            # with an image panel, never auto-split into two bullet columns
+            left_items, right_items = all_b, []
+            two_col = False
+        elif len(all_b) > 6:
+            mid = (len(all_b) + 1) // 2
+            left_items, right_items = all_b[:mid], all_b[mid:]
+            two_col = True
+        else:
+            left_items, right_items = all_b, []
+            two_col = False
+
+        col_gap = 32
+        n_rows  = max(len(left_items), len(right_items)) if two_col else len(left_items)
+        max_lines_per_bullet = 1 if n_rows > 8 else 2
+
+        for bsz in [40, 34, 29, 25, 22, 19]:
+            lh   = int(bsz * 1.42)
+            cw   = (bullet_col_w - col_gap) // 2 if two_col else bullet_col_w
+            f_b  = _font(bsz)
+            lh_m = _measure_bullets(left_items,  f_b, cw, lh, max_lines_per_bullet)
+            rh_m = _measure_bullets(right_items, f_b, cw, lh, max_lines_per_bullet) if right_items else 0
+            if max(lh_m, rh_m) <= body_h:
+                break
+
+        f_body = _font(bsz)
+        lh     = int(bsz * 1.42)
+        col_w  = (bullet_col_w - col_gap) // 2 if two_col else bullet_col_w
+
+        accent_bar_x = MARGIN - 16
+        est_h = _measure_bullets(left_items, f_body, col_w, lh)
+        if right_items:
+            est_h = max(est_h, _measure_bullets(right_items, f_body, col_w, lh))
+        draw.rectangle(
+            [accent_bar_x, body_top, accent_bar_x + 3, min(body_top + est_h, BOTTOM)],
+            fill=ACCENT,
+        )
+
+        _draw_bullet_column(draw, left_items,  f_body, MARGIN,              body_top, col_w, BOTTOM, lh, max_lines_per_bullet)
+        if two_col:
+            _draw_bullet_column(draw, right_items, f_body, MARGIN + col_w + col_gap, body_top, col_w, BOTTOM, lh, max_lines_per_bullet)
+
+    # ── images ───────────────────────────────────────────────────────────────
+    if has_images:
+        import io as _io
+        panel_h     = BOTTOM - body_top
+        n_imgs      = len(spec.images)
+        slot_h      = (panel_h - IMG_GAP * (n_imgs - 1)) // n_imgs
+
+        iy = body_top
+        for blob in spec.images:
+            try:
+                src = Image.open(_io.BytesIO(blob)).convert("RGBA")
+            except Exception:
+                iy += slot_h + IMG_GAP
+                continue
+
+            # scale to fit slot while preserving aspect ratio
+            iw, ih = src.size
+            scale  = min(img_panel_w / iw, slot_h / ih, 1.0)
+            nw     = max(1, int(iw * scale))
+            nh     = max(1, int(ih * scale))
+            src    = src.resize((nw, nh), Image.LANCZOS)
+
+            # center horizontally within the panel
+            ox = img_panel_x + (img_panel_w - nw) // 2
+            oy = iy + (slot_h - nh) // 2
+
+            # paste with alpha mask so PNGs with transparency work
+            img.paste(src, (ox, oy), mask=src.split()[3] if src.mode == "RGBA" else None)
+
+            iy += slot_h + IMG_GAP
 
     img.save(str(out_path))
 
@@ -737,6 +554,116 @@ def _merge_audio(
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg audio merge failed:\n{result.stderr[-1500:]}")
+
+
+# ── PPTX / PDF loader ──────────────────────────────────────────────────────
+
+def slides_from_presentation(path: Path) -> list[SlideSpec]:
+    """
+    Load slides from a *.pptx or *.pdf file and convert them to SlideSpec objects.
+
+    - Slide title      → SlideSpec.title
+    - Body text lines  → SlideSpec.bullets  (one line per bullet)
+    - Presenter notes  → SlideSpec.narration  (falls back to body text if empty)
+    - Tag              → "SLIDE N" (overridable by adding a tag comment in notes,
+                         see below)
+
+    Optional: add a line ``TAG: My Section Label`` anywhere in the presenter
+    notes to set a custom section tag shown above the title.
+    """
+    from text2speech.slides import read_slides
+
+    raw_slides = read_slides(path)
+    specs: list[SlideSpec] = []
+
+    for s in raw_slides:
+        # Parse optional TAG: directive out of notes
+        tag = f"SLIDE {s.index}"
+        notes_clean = s.notes
+        if notes_clean:
+            tag_lines = [ln for ln in notes_clean.splitlines() if ln.strip().upper().startswith("TAG:")]
+            if tag_lines:
+                tag = tag_lines[0].split(":", 1)[1].strip()
+                # Remove the TAG line from narration
+                notes_clean = "\n".join(
+                    ln for ln in notes_clean.splitlines()
+                    if not ln.strip().upper().startswith("TAG:")
+                ).strip()
+
+        # Build bullets from body lines (preserve indentation for sub-items)
+        bullets: list[str] = []
+        for line in s.body.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                bullets.append("")
+                continue
+            # Detect indented sub-items (leading spaces/tabs in original)
+            if line.startswith(("  ", "\t")):
+                bullets.append(f"  {stripped}")
+            else:
+                bullets.append(stripped)
+
+        # Narration: use presenter notes if present, else fall back to body text
+        narration = notes_clean or s.spoken_text(include_notes=False)
+
+        specs.append(SlideSpec(
+            index     = s.index,
+            title     = s.title or f"Slide {s.index}",
+            tag       = tag,
+            bullets   = bullets,
+            narration = narration,
+            images    = s.images,
+        ))
+
+    return specs
+
+
+# ── YAML slide loader ──────────────────────────────────────────────────────
+
+def slides_from_yaml(yaml_path: Path) -> list[SlideSpec]:
+    """
+    Load slides from a YAML file.
+
+    Expected format::
+
+        title: "My Presentation"   # optional, used for reference only
+        slides:
+          - title: "Slide Title"
+            tag: "SECTION 1"       # optional small label above the title
+            bullets:               # shown on screen (keep short!)
+              - "Key point one"
+              - "Key point two"
+              - "  - indented sub-point"   # indent with 2+ spaces
+            right_bullets:         # optional second column
+              - "Column 2 item"
+            quote: "Optional pull-quote"   # optional
+            narration: |           # spoken aloud (not shown on slide)
+              Full explanation goes here.
+              Can span multiple lines.
+    """
+    import yaml  # lazy import — not needed at module load time
+
+    raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+
+    if isinstance(raw, list):
+        slide_list = raw                      # bare list of slide dicts
+    elif isinstance(raw, dict):
+        slide_list = raw.get("slides", [])    # {title: ..., slides: [...]}
+    else:
+        raise ValueError(f"Unexpected YAML structure in {yaml_path}")
+
+    specs: list[SlideSpec] = []
+    for i, item in enumerate(slide_list, 1):
+        specs.append(SlideSpec(
+            index       = item.get("index", i),
+            title       = str(item.get("title", f"Slide {i}")),
+            tag         = str(item.get("tag", "")),
+            bullets     = [str(b) for b in item.get("bullets", [])],
+            right_bullets = [str(b) for b in item.get("right_bullets", [])],
+            quote       = str(item.get("quote", "")),
+            narration   = str(item.get("narration", item.get("title", ""))),
+        ))
+    return specs
 
 
 # ── TSX canvas parser ──────────────────────────────────────────────────────

@@ -1,0 +1,264 @@
+title: "How to Write a Paper — Mike Ashby"
+
+slides:
+  - index: 1
+    title: "How to Write a Paper"
+    tag: "MIKE ASHBY  |  CAMBRIDGE  |  6TH EDITION 2005"
+    bullets:
+      - "Prescriptive guide for researchers"
+      - "Blank page to polished publication"
+      - "Structured like engineering design:"
+      - "  Market -> Concept -> Embodiment -> Detail -> Product"
+      - "9 sections + Appendix + Checklist"
+    narration: >
+      How to Write a Paper, by Mike Ashby of the Engineering Department at Cambridge.
+      This guide, now in its sixth edition, offers prescriptive advice for writing
+      clear and effective research papers — covering the full journey from a blank
+      page to a polished publication, structured around the principles of engineering design.
+
+  - index: 2
+    title: "1. The Design Process"
+    tag: "SECTION 1"
+    bullets:
+      - "Well-written papers are read, cited, remembered"
+      - "Poorly written papers are not"
+      - ""
+      - "Five design steps:"
+      - "  1. Market   — who reads it, and how?"
+      - "  2. Concept  — plan before you draft"
+      - "  3. Embodiment — first draft, facts first"
+      - "  4. Detail   — clarity, balance, style"
+      - "  5. End-product — layout, headings, figures"
+    narration: >
+      Ashby opens with a core principle: well-written papers are read, remembered,
+      and cited. Poorly written ones are not. Writing a paper is a design activity
+      with five essential steps: understand your market, form a concept, produce
+      an embodiment — the first draft — refine the details, and deliver a polished
+      end product. Each step depends on the one before.
+
+  - index: 3
+    title: "2. Know Your Readers"
+    tag: "SECTION 2 - THE MARKET"
+    bullets:
+      - "Thesis examiners — everything relevant"
+      - "Journal referees — rigour, novelty, concision"
+      - "Funding panels — alignment, quality, promise"
+      - "Popular audience — hardest to write for"
+      - ""
+      - "Write poorly → lose your readers"
+      - "Write well → they respond as planned"
+    narration: >
+      Section two asks: who are your readers? Your thesis examiners want everything
+      relevant — why you did the research, what you found, and what you concluded.
+      Journal referees expect rigour and novelty. Funding panels want alignment with
+      their priorities. And a popular audience — intelligent but non-specialist —
+      demands the finest-tuned style of all. Write poorly, and you lose every one of them.
+
+  - index: 4
+    title: "3. The Concept Sheet"
+    tag: "SECTION 3 - CONCEPT"
+    bullets:
+      - "Can't write? You don't know what to say"
+      - ""
+      - "Make a concept sheet:"
+      - "  A3 landscape, title at top"
+      - "  Section headings in boxes"
+      - "  Ideas and figures in bubbles"
+      - "  Add to it any time — it's your road-map"
+      - ""
+      - "Breaks writer's block"
+    narration: >
+      Before writing a single word, make a concept sheet. Take an A3 sheet in
+      landscape mode, write a tentative title at the top, then sketch your section
+      headings in boxes. Scatter ideas, references, and planned figures as bubbles
+      connected to their sections. This simple act breaks writer's block and gives
+      you a road-map of the entire paper before the hard work of drafting begins.
+
+  - index: 5
+    title: "4. Paper Structure"
+    tag: "SECTION 4 - EMBODIMENT"
+    bullets:
+      - "4.1  Title — meaningful and brief"
+      - "4.2  Attribution — names, institute, date"
+      - "4.3  Abstract — <=100 words"
+      - "4.4  Introduction — problem + contribution"
+      - "4.5  Method — reproducible detail"
+      - "4.6  Results — data only, no interpretation"
+    right_bullets:
+      - "4.7  Discussion — principles, models"
+      - "4.8  Conclusion — advances in knowledge"
+      - "4.9  Acknowledgements — full names"
+      - "4.10 References — name, year, journal"
+      - "4.11 Figures — self-contained, labelled"
+      - "4.12 Appendices — essential extras"
+    narration: >
+      A paper has twelve parts: title, attribution, abstract, introduction, method,
+      results, discussion, conclusion, acknowledgements, references, figures, and
+      appendices. You don't write them in order — draft whichever section you have
+      the clearest ideas for first. Get the pieces assembled, then worry about how
+      they fit together.
+
+  - index: 6
+    title: "Abstract & Introduction"
+    tag: "SECTIONS 4.3 & 4.4"
+    bullets:
+      - "Abstract — one sentence each on:"
+      - "  Motive / Method / Results / Conclusions"
+      - "  Target: <=100 words. No waffle."
+      - "  Imagine paying 10p per word"
+      - ""
+      - "Introduction — tell the reader:"
+      - "  What is the problem?"
+      - "  Who worked on it before?"
+      - "  What is YOUR new contribution?"
+    narration: >
+      The abstract is your paper in miniature: one sentence each on motive, method,
+      key results, and conclusions. Target a hundred words. Imagine you are paying
+      ten pence per word — that sharpens the mind. The introduction states the
+      problem, reviews the literature briefly, and tells the reader exactly what
+      novel contribution you are about to make. Start with a hook, not a platitude.
+
+  - index: 7
+    title: "Results & Discussion"
+    tag: "SECTIONS 4.6 & 4.7"
+    bullets:
+      - "Results — data without interpretation"
+      - "  All symbols and units defined"
+      - "  Error bars or confidence limits given"
+      - ""
+      - "  POOR:   'It is clearly shown in Figure 3...'"
+      - "  BETTER: 'Shear loading fractures cell-walls (Fig. 3)'"
+      - ""
+      - "Discussion — extract principles, compare with model"
+      - "Never mix Results with Discussion"
+    narration: >
+      Results are reported without interpretation — just the data, with error bars
+      and proper units. Discussion is where you extract principles, compare data
+      to theory, and build toward your conclusions. Never mix the two. And always
+      prefer brevity: 'Shear loading fractures cell walls' is far better than a
+      two-line description of what Figure 3 already shows.
+
+  - index: 8
+    title: "5. Grammar Essentials"
+    tag: "SECTION 5"
+    bullets:
+      - "Bad grammar confuses the reader"
+      - ""
+      - "'that' limits — no commas"
+      - "  'Computations that were on a Cray were accurate'"
+      - "  (only the Cray ones)"
+      - ""
+      - "'which' adds a fact — use commas"
+      - "  'Computations, which were on a Cray, were accurate'"
+      - "  (all of them happened to be on a Cray)"
+      - ""
+      - "Compound sentences: balance comparable ideas"
+    narration: >
+      Grammar tells the reader the function of words. The most misused distinction
+      is that versus which. That limits the noun it qualifies — no commas needed.
+      Which introduces an additional fact about the noun — commas required.
+      Compound sentences must balance comparable ideas of similar weight.
+      Do not link a major finding with a trivial observation.
+
+  - index: 9
+    title: "7. Punctuation"
+    tag: "SECTION 7"
+    bullets:
+      - "Full stop   .   Ends declarative sentences"
+      - "Comma       ,   Separates confusing adjacents"
+      - "Semi-colon  ;   Links related clauses"
+      - "Colon       :   Sets up anticipation"
+      - "Dash        --  Parenthetic aside or upshot"
+    right_bullets:
+      - "Hyphen      -   Compound words: ball-and-stick"
+      - "Apostrophe  '   Possession or contraction"
+      - "                NOT possessive 'its'"
+      - "Exclamation !   Avoid — say it directly"
+      - "Parentheses ()  Asides, keep them brief"
+    narration: >
+      Punctuation orders prose and signals how to interpret it. The colon sets up
+      anticipation. The semi-colon links closely related clauses. The dash sets off
+      a parenthetic aside or introduces a final summary. The apostrophe shows
+      possession or contraction — but never in 'its' as a possessive.
+      And the exclamation mark: delete it. Say what you mean directly.
+
+  - index: 10
+    title: "8. Style — Clarity & Precision"
+    tag: "SECTION 8"
+    bullets:
+      - "Simple language, short words, short sentences"
+      - "Define all symbols and abbreviations"
+      - ""
+      - "Cut empty words:"
+      - "  'This very important point' -> 'This point'"
+      - "  'Quite good agreement'  ->  implies it is not"
+      - ""
+      - "Revise and rewrite:"
+      - "  Nobody gets it right first time"
+      - "  Rest 48 hours before reviewing"
+    narration: >
+      Style begins with clarity. Use simple words, familiar constructions, short
+      sentences. Every word must earn its place. Avoid weak qualifiers — very,
+      quite, rather — they dilute the message. 'This very important point' becomes
+      simply 'this point'. And revise. Nobody gets it right the first time.
+      Let the draft sit for forty-eight hours before returning to it.
+
+  - index: 11
+    title: "Common Pitfalls"
+    tag: "SECTIONS 8.6 - 8.8"
+    bullets:
+      - "Overstating — let the reader judge importance"
+      - "Apologising — never, ever apologise"
+      - "Jargon — excludes non-specialists"
+      - "Patronising — breaks the reader's trust"
+      - "Breezy web-speak — says nothing"
+      - "Acronym overload — MEM + FE + SEM + SAM..."
+    narration: >
+      Six pitfalls to avoid. Overstating undermines credibility — let the reader
+      decide on importance. Apologising suggests incompetence — never, ever
+      apologise in a paper. Jargon excludes the intelligent non-specialist reader.
+      Patronising your reader breaks their trust. Breezy web-speak says nothing
+      and shows off. And an acronym-dense sentence is simply unreadable.
+
+  - index: 12
+    title: "Good Writing Techniques"
+    tag: "SECTIONS 8.9 - 8.12"
+    bullets:
+      - "Hook first sentence — new fact or comparison"
+      - "  POOR:   'Metal foams attract interest...'"
+      - "  BETTER: 'Metal foams are not as strong as they should be'"
+      - ""
+      - "Analogies — make the abstract concrete"
+      - "  'Rolling friction is like cycling through sand'"
+      - ""
+      - "Linking sentences — end with a word the next picks up"
+      - "  '...we need a material index. A material index is...'"
+    narration: >
+      Start with a hook, not a platitude. 'Metal foams are not as strong as they
+      should be' is far better than 'Metal foams are a new class of material with
+      great potential.' Use analogies to make the abstract concrete. And link your
+      paragraphs — end each one with a word or phrase that the next one picks up,
+      so the reader always knows what is coming before they read it.
+
+  - index: 13
+    title: "Checklist for Progress"
+    tag: "FINAL PAGE OF MANUAL"
+    bullets:
+      - "Concept:     [ ] Concept sheet done"
+      - ""
+      - "First draft:"
+      - "  [ ] Title & attribution    [ ] Abstract"
+      - "  [ ] Introduction           [ ] Method"
+      - "  [ ] Results                [ ] Discussion"
+      - "  [ ] Conclusions + Refs     [ ] Figures"
+      - ""
+      - "Edit:  [ ] Grammar  [ ] Spelling  [ ] Style"
+      - "       [ ] Waffle removed  [ ] 48-hour rest"
+      - "Visual: [ ] Layout  [ ] Headings  [ ] Legibility"
+    narration: >
+      Finally, use a checklist. First pass: make the concept sheet, then draft all
+      twelve sections. Second pass: check grammar, spelling, punctuation, and style.
+      Remove waffle. Define all symbols. Then — and this is crucial — put the draft
+      away for at least forty-eight hours before returning with fresh eyes to review
+      layout, figures, and visual presentation. That pause is what separates a good
+      paper from a great one.
