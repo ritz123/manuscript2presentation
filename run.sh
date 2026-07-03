@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Usage:
-#   ./run.sh <slides.pptx> [OPTIONS]   → narrated MP4
-#   ./run.sh <slides.yaml> [OPTIONS]
-#   ./run.sh <slides.canvas.tsx> [OPTIONS]
+#   ./run.sh <slides.pptx> [OPTIONS]          → narrated MP4 (from existing slides)
+#   ./run.sh <paper.pdf> --plan [OPTIONS]      → PDF → LLM → PPTX → MP4
 #   ./run.sh speak "Hello world"
 #   ./run.sh list-voices --engine kokoro
 
@@ -39,36 +38,41 @@ _has_flag() {
 # ── help ──────────────────────────────────────────────────────────────────────
 if [[ "$COMMAND" == "--help" || "$COMMAND" == "-h" || -z "$COMMAND" ]]; then
     cat <<'EOF'
-Usage: ./run.sh <slides> [OPTIONS]
+Usage: ./run.sh <input> [OPTIONS]
        ./run.sh COMMAND [ARGS...]
 
-Generate a narrated MP4 video from a slide deck.
-Accepted formats: .pptx  .pdf  .yaml  .tsx
-
+─── Narrated video from a slide deck ──────────────────────────────────────────
   ./run.sh slides.pptx
       → output/<timestamp>_slides.mp4  (auto-timestamped)
 
-  ./run.sh slides.pptx --engine kokoro
-      Use the high-quality neural voice (recommended).
-
-  ./run.sh slides.pptx --engine kokoro --voice bf_emma
-      Choose a specific voice (see: ./run.sh list-voices --engine kokoro).
-
+  ./run.sh slides.pptx --engine kokoro --voice bm_george
   ./run.sh slides.pptx --slides 1-5
-      Render only slides 1 through 5.
-
   ./run.sh slides.pptx --output ~/Desktop/talk.mp4
-      Save to a specific path instead of output/.
 
-  Same syntax works for .pdf, .yaml, and .tsx files.
+  Same syntax works for:  .pdf  .yaml  .tsx
 
-Other commands:
+─── PDF manuscript → slides → video (full automation) ─────────────────────────
+  ./run.sh paper.pdf --plan
+      Uses Ollama LLM to plan slides, builds a styled PPTX, renders MP4.
+
+  ./run.sh paper.pdf --plan --model llama3.2 --n-slides 10
+  ./run.sh paper.pdf --plan --engine kokoro --voice bm_george --video
+
+─── Other commands ─────────────────────────────────────────────────────────────
   ./run.sh speak "Hello world"
   ./run.sh speak-file notes.txt
   ./run.sh list-voices --engine kokoro
   ./run.sh download-models
 EOF
     exit 0
+fi
+
+# ── PDF + --plan → full LLM pipeline ─────────────────────────────────────────
+if [[ "$COMMAND" == *.pdf ]] && _has_flag "--plan" "$@"; then
+    # Strip --plan from args before passing to paper-to-slides
+    ARGS=()
+    for arg in "${@:2}"; do [[ "$arg" != "--plan" ]] && ARGS+=("$arg"); done
+    exec "$T2S" paper-to-slides "$COMMAND" "${ARGS[@]}"
 fi
 
 # ── slide decks → narrated MP4 ───────────────────────────────────────────────

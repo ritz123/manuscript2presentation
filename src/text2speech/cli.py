@@ -789,6 +789,122 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")[:40]
 
 
+@app.command("paper-to-slides")
+def paper_to_slides(
+    pdf_file: Annotated[Path, typer.Argument(help="PDF manuscript to convert into a presentation")],
+    model: Annotated[str, typer.Option("--model", "-m", help="Ollama model for slide planning")] = "llama3.2",
+    n_slides: Annotated[int, typer.Option("--n-slides", help="Target number of slides (8-14)")] = 12,
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output PPTX path")] = None,
+    video: Annotated[bool, typer.Option("--video/--no-video", help="Also render a narrated MP4")] = False,
+    engine: Annotated[str, typer.Option("--engine", help="TTS engine for video: kokoro or pyttsx3")] = "kokoro",
+    voice: Annotated[Optional[str], typer.Option("--voice", help="TTS voice ID")] = None,
+) -> None:
+    """
+    Convert a PDF manuscript into a styled PPTX presentation (and optionally a narrated video).
+
+    Uses [bold green]Ollama[/] to intelligently plan slides from the document content,
+    then builds a styled PPTX with bullets in the slide body and full narration in Notes.
+
+    [bold]Examples:[/]
+
+      t2s paper-to-slides paper.pdf
+
+      t2s paper-to-slides paper.pdf --model llama3.2 --n-slides 10
+
+      t2s paper-to-slides paper.pdf --video --engine kokoro --voice bm_george
+    """
+    import json
+    import re
+
+    if not pdf_file.exists():
+        _abort(f"File not found: {pdf_file}")
+    if pdf_file.suffix.lower() != ".pdf":
+        _abort(f"Expected a .pdf file, got: {pdf_file}")
+
+    stem    = pdf_file.stem
+    pptx_out = output or (pdf_file.parent / f"{stem}.pptx")
+
+    # ── Step 1: extract PDF text ──────────────────────────────────────────────
+    console.print(f"\n[bold]Step 1/3[/] Extracting text from [cyan]{pdf_file.name}[/]…")
+    try:
+        import pypdf
+    except ImportError:
+        _abort("pypdf is required. Run: uv pip install pypdf")
+
+    reader = pypdf.PdfReader(str(pdf_file))
+    pages  = [p.extract_text() or "" for p in reader.pages]
+    full_text = "\n\n--- PAGE BREAK ---\n\n".join(pages)
+    console.print(f"  [green]✓[/] {len(reader.pages)} pages, {len(full_text):,} characters")
+
+    # ── Step 2: call Ollama to generate slide plan ────────────────────────────
+    console.print(f"\n[bold]Step 2/3[/] Generating slide plan with [green]{model}[/]…")
+
+    prompt = f"""You are a presentation designer. Read the document below and produce a slide plan as a JSON array.
+
+Rules:
+- {n_slides} slides total (first = title/overview, last = conclusions/takeaways)
+- "title": short slide title (<= 8 words)
+- "tag": optional short section label in ALL CAPS (e.g. "OVERVIEW", "METHOD")
+- "bullets": 4-6 concise on-slide points (<= 12 words each, no full sentences)
+- "narration": 3-5 full spoken sentences expanding on the bullets
+- "image_page": (optional integer) PDF page number whose figure best illustrates this slide; omit if none
+- Output ONLY valid JSON array, no markdown, no prose
+
+Document:
+{full_text[:40000]}"""
+
+    try:
+        import ollama as _ollama
+        with console.status(f"  Calling {model}…"):
+            response = _ollama.generate(model=model, prompt=prompt)
+        raw = response.response if hasattr(response, "response") else response["response"]
+    except Exception as e:
+        _abort(f"Ollama call failed: {e}\nMake sure Ollama is running and '{model}' is pulled.")
+
+    # Strip markdown code fences if the model wrapped the JSON
+    raw = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
+
+    # Extract the JSON array (in case there's any leading/trailing prose)
+    match = re.search(r"\[.*\]", raw, re.DOTALL)
+    if not match:
+        _abort("Ollama did not return a valid JSON array. Try a different model or check Ollama is working.")
+    try:
+        plan: list[dict] = json.loads(match.group())
+    except json.JSONDecodeError as e:
+        _abort(f"Could not parse Ollama response as JSON: {e}")
+
+    console.print(f"  [green]✓[/] {len(plan)} slides planned")
+
+    # ── Step 3: build PPTX ────────────────────────────────────────────────────
+    console.print(f"\n[bold]Step 3/3[/] Building PPTX [cyan]{pptx_out.name}[/]…")
+    try:
+        from text2speech.pptx_builder import build_pptx
+    except ImportError as e:
+        _abort(f"pptx_builder not available: {e}")
+
+    with console.status("  Rendering slides…"):
+        build_pptx(plan, pptx_out, pdf_file)
+    console.print(f"  [green]✓[/] Saved: {pptx_out}")
+
+    # ── Optional: render video ─────────────────────────────────────────────────
+    if video:
+        console.print(f"\n[bold]Bonus[/] Rendering narrated video…")
+        voice_args = ["--voice", voice] if voice else []
+        import subprocess, sys as _sys
+        cmd = [_sys.executable, "-m", "text2speech.cli",
+               "canvas-video", str(pptx_out),
+               "--engine", engine,
+               "--output", str(pptx_out.with_suffix(".mp4")),
+               *voice_args]
+        result = subprocess.run(cmd)
+        if result.returncode == 0:
+            console.print(f"  [green]✓[/] Video: {pptx_out.with_suffix('.mp4')}")
+
+    console.print(f"\n[bold green]Done![/]")
+    console.print(f"  PPTX:  {pptx_out}")
+    console.print(f"  Video: [dim]./run.sh {pptx_out} --engine kokoro[/]  (to generate later)")
+
+
 @app.command("download-models")
 def download_models() -> None:
     """
