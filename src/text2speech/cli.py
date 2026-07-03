@@ -868,10 +868,29 @@ Document:
     match = re.search(r"\[.*\]", raw, re.DOTALL)
     if not match:
         _abort("Ollama did not return a valid JSON array. Try a different model or check Ollama is working.")
+    json_str = match.group()
+
+    def _fix_json(s: str) -> str:
+        """Fix common LLM JSON issues: trailing commas, smart quotes."""
+        s = re.sub(r",\s*([}\]])", r"\1", s)           # trailing commas
+        s = s.replace("\u2018", "'").replace("\u2019", "'")   # smart single quotes
+        s = s.replace("\u201c", '"').replace("\u201d", '"')   # smart double quotes
+        return s
+
     try:
-        plan: list[dict] = json.loads(match.group())
-    except json.JSONDecodeError as e:
-        _abort(f"Could not parse Ollama response as JSON: {e}")
+        plan: list[dict] = json.loads(json_str)
+    except json.JSONDecodeError:
+        try:
+            plan = json.loads(_fix_json(json_str))
+        except json.JSONDecodeError as e:
+            # Show the problematic region to help debug
+            char = e.pos
+            snippet = json_str[max(0, char - 80):char + 80]
+            _abort(
+                f"Could not parse Ollama response as JSON: {e}\n"
+                f"Problem near: …{snippet!r}…\n"
+                f"Try --model mistral or a larger model for cleaner JSON output."
+            )
 
     console.print(f"  [green]✓[/] {len(plan)} slides planned")
 
