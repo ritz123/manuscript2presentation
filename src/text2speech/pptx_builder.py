@@ -5,6 +5,7 @@ The public API is :func:`build_pptx`.  All other names are private helpers.
 
 from __future__ import annotations
 import io
+import warnings
 from pathlib import Path
 
 # ── Slide dimensions (16:9 widescreen, EMU units) ─────────────────────────────
@@ -86,40 +87,65 @@ def _add_rect(slide, left, top, width, height, color: RGBColor):
 
 
 def _extract_pdf_page_image(pdf_path: Path, page_num: int) -> bytes | None:
+    """Return PNG bytes for the best figure on `page_num` of `pdf_path`.
+
+    Strategy:
+    1. Extract the largest embedded raster image from the page (fast, exact).
+    2. If none found, render the whole page via pypdfium2 (handles vector graphics).
+    3. Returns None if both approaches fail.
+    """
     try:
         import pypdf
         from PIL import Image as PILImage
     except ImportError:
         return None
 
+    warnings.filterwarnings("ignore", message=".*Lookup Table.*")
     reader = pypdf.PdfReader(str(pdf_path))
     idx = page_num - 1
     if idx < 0 or idx >= len(reader.pages):
         return None
 
-    images = list(reader.pages[idx].images)
-    if not images:
-        return None
-
+    # ── attempt 1: largest embedded raster ───────────────────────────────────
+    warnings.filterwarnings("ignore", message=".*Lookup Table.*")
     best_blob, best_area = None, 0
-    for img_file in images:
-        try:
-            pil = PILImage.open(io.BytesIO(img_file.data))
-            area = pil.width * pil.height
-            if area > best_area:
-                best_area, best_blob = area, img_file.data
-        except Exception:
-            continue
-
-    if best_blob is None:
-        return None
-
     try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            page_images = list(reader.pages[idx].images)
+        for img_file in page_images:
+            try:
+                pil = PILImage.open(io.BytesIO(img_file.data))
+                area = pil.width * pil.height
+                if area > best_area and area > 10_000:
+                    best_area, best_blob = area, img_file.data
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    if best_blob is not None:
+        try:
+            buf = io.BytesIO()
+            PILImage.open(io.BytesIO(best_blob)).convert("RGB").save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception:
+            pass
+
+    # ── attempt 2: render full page with pypdfium2 (vector-safe) ─────────────
+    try:
+        import pypdfium2 as pdfium  # type: ignore
+        doc = pdfium.PdfDocument(str(pdf_path))
+        page = doc[idx]
+        bitmap = page.render(scale=2.0)   # 144 dpi — sharp enough for slides
+        pil = bitmap.to_pil()
         buf = io.BytesIO()
-        PILImage.open(io.BytesIO(best_blob)).save(buf, format="PNG")
+        pil.convert("RGB").save(buf, format="PNG")
         return buf.getvalue()
     except Exception:
-        return None
+        pass
+
+    return None
 
 
 # ── Main slide builder ─────────────────────────────────────────────────────────
@@ -133,7 +159,7 @@ def _render_slide(prs, slide_data: dict, idx: int, total: int,
     slide   = prs.slides.add_slide(blank)
 
     title_text  = slide_data.get("title", f"Slide {idx}")
-    tag_text    = slide_data.get("tag", "").upper()
+    tag_text    = (slide_data.get("tag") or "").upper()
     bullets     = slide_data.get("bullets", [])
     narration   = slide_data.get("narration", "")
     image_page  = slide_data.get("image_page")

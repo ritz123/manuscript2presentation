@@ -828,13 +828,72 @@ def paper_to_slides(
     console.print(f"\n[bold]Step 1/3[/] Extracting text from [cyan]{pdf_file.name}[/]…")
     try:
         import pypdf
+        import warnings as _warnings
+        _warnings.filterwarnings("ignore", message=".*Lookup Table.*")
+        _warnings.filterwarnings("ignore", message=".*PdfReadWarning.*")
     except ImportError:
         _abort("pypdf is required. Run: uv pip install pypdf")
 
-    reader = pypdf.PdfReader(str(pdf_file))
-    pages  = [p.extract_text() or "" for p in reader.pages]
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")   # suppress pypdf LookupTable noise
+        reader = pypdf.PdfReader(str(pdf_file))
+        pages  = [p.extract_text() or "" for p in reader.pages]
     full_text = "\n\n--- PAGE BREAK ---\n\n".join(pages)
     console.print(f"  [green]✓[/] {len(reader.pages)} pages, {len(full_text):,} characters")
+
+    # Scan for pages that have embedded images (figures / diagrams)
+    import io as _io
+    import warnings as _warnings
+    from PIL import Image as _PILImage
+    figure_pages: list[int] = []
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        reader2 = pypdf.PdfReader(str(pdf_file))   # fresh reader for image scan
+    for pg_idx, page in enumerate(reader2.pages):
+        try:
+            with _warnings.catch_warnings():
+                _warnings.simplefilter("ignore")
+                imgs = list(page.images)
+        except Exception:
+            imgs = []
+        for img_file in imgs:
+            try:
+                pil = _PILImage.open(_io.BytesIO(img_file.data))
+                if pil.width * pil.height > 10_000:   # skip tiny decorative images
+                    figure_pages.append(pg_idx + 1)
+                    break
+            except Exception:
+                pass
+
+    # Also look for pages whose text starts with "Fig" / "Figure" in any line
+    # (helpful for vector-graphics-only pages that have no embedded rasters)
+    import re as _re
+    for pg_idx, pg_text in enumerate(pages):
+        pg_num = pg_idx + 1
+        if pg_num not in figure_pages:
+            if _re.search(r"\bFig(?:ure)?\s*\d", pg_text, _re.IGNORECASE):
+                figure_pages.append(pg_num)
+
+    figure_pages.sort()
+    console.print(f"  [green]✓[/] Figure pages found: {figure_pages or 'none'}")
+
+    # Build figure catalog for the LLM
+    if figure_pages:
+        catalog_lines = [
+            "AVAILABLE FIGURE PAGES (only use these for image_page):",
+        ]
+        for pg_num in figure_pages:
+            snippet = pages[pg_num - 1][:200].replace("\n", " ").strip()
+            catalog_lines.append(f"  Page {pg_num}: {snippet}")
+        figure_catalog = "\n".join(catalog_lines)
+        image_rule = (
+            f'- "image_page": assign from the list below to slides where the figure is relevant; '
+            f"omit for slides where no figure fits"
+        )
+    else:
+        figure_catalog = ""
+        image_rule = '- "image_page": omit (no figures detected in this document)'
 
     # ── Step 2: call Ollama to generate slide plan ────────────────────────────
     console.print(f"\n[bold]Step 2/3[/] Generating slide plan with [green]{model}[/]…")
@@ -847,8 +906,10 @@ Rules:
 - "tag": optional short section label in ALL CAPS (e.g. "OVERVIEW", "METHOD")
 - "bullets": 4-6 concise on-slide points (<= 12 words each, no full sentences)
 - "narration": 3-5 full spoken sentences expanding on the bullets
-- "image_page": (optional integer) PDF page number whose figure best illustrates this slide; omit if none
+- {image_rule}
 - Output ONLY valid JSON array, no markdown, no prose
+
+{figure_catalog}
 
 Document:
 {full_text[:40000]}"""
@@ -871,28 +932,82 @@ Document:
     json_str = match.group()
 
     def _fix_json(s: str) -> str:
-        """Fix common LLM JSON issues: trailing commas, smart quotes."""
-        s = re.sub(r",\s*([}\]])", r"\1", s)           # trailing commas
-        s = s.replace("\u2018", "'").replace("\u2019", "'")   # smart single quotes
-        s = s.replace("\u201c", '"').replace("\u201d", '"')   # smart double quotes
+        """Fix common LLM JSON issues: trailing commas, missing commas, Python literals, smart quotes."""
+        s = s.replace("\u2018", "'").replace("\u2019", "'")    # smart single quotes
+        s = s.replace("\u201c", '"').replace("\u201d", '"')    # smart double quotes
+        # Python literals → JSON
+        s = re.sub(r'\bNone\b', 'null', s)
+        s = re.sub(r'\bTrue\b', 'true', s)
+        s = re.sub(r'\bFalse\b', 'false', s)
+        # "image_page": Page 4  →  "image_page": 4
+        s = re.sub(r'("image_page"\s*:\s*)Page\s*(\d+)', r'\g<1>\2', s, flags=re.IGNORECASE)
+        s = re.sub(r",\s*([}\]])", r"\1", s)                  # trailing commas
+        # Missing comma between two string values on adjacent lines:
+        #   "some value"
+        #   "next value"   →  "some value",\n  "next value"
+        s = re.sub(r'(")\s*\n(\s*")', r'",\n\2', s)
+        # Missing comma between closing ] or } and the next key/value
+        s = re.sub(r'(["\d\]}])\s*\n(\s*["\[{])', r'\1,\n\2', s)
         return s
 
+    def _try_parse(s: str) -> list[dict]:
+        for attempt in (s, _fix_json(s)):
+            try:
+                return json.loads(attempt)
+            except json.JSONDecodeError:
+                pass
+        raise json.JSONDecodeError("", s, 0)
+
     try:
-        plan: list[dict] = json.loads(json_str)
-    except json.JSONDecodeError:
+        plan: list[dict] = _try_parse(json_str)
+    except json.JSONDecodeError as e:
+        # Re-run to get the real error position from the fixed string
+        fixed = _fix_json(json_str)
         try:
-            plan = json.loads(_fix_json(json_str))
-        except json.JSONDecodeError as e:
-            # Show the problematic region to help debug
-            char = e.pos
-            snippet = json_str[max(0, char - 80):char + 80]
+            plan = json.loads(fixed)
+        except json.JSONDecodeError as e2:
+            char = e2.pos
+            snippet = fixed[max(0, char - 80):char + 80]
             _abort(
-                f"Could not parse Ollama response as JSON: {e}\n"
+                f"Could not parse Ollama response as JSON: {e2}\n"
                 f"Problem near: …{snippet!r}…\n"
                 f"Try --model mistral or a larger model for cleaner JSON output."
             )
 
-    console.print(f"  [green]✓[/] {len(plan)} slides planned")
+    # ── Figure assignment ─────────────────────────────────────────────────────
+    # 1. Validate: discard image_page values the LLM hallucinated (not in catalog)
+    if figure_pages:
+        for slide_data in plan:
+            pg = slide_data.get("image_page")
+            if pg is not None and pg not in figure_pages:
+                slide_data.pop("image_page", None)
+
+    # 2. Fallback: assign any still-unmatched figure pages via keyword overlap
+    _STOP = {"the","a","an","of","in","to","and","is","are","it","this","that",
+             "with","for","on","be","by","as","at","from","was","were","or","but"}
+    already_used = {s["image_page"] for s in plan if s.get("image_page")}
+    for pg_num in figure_pages:
+        if pg_num in already_used:
+            continue
+        pg_text = pages[pg_num - 1].lower()
+        best_i, best_score = -1, 0
+        for i, slide_data in enumerate(plan):
+            if slide_data.get("image_page"):
+                continue   # slide already has an image
+            keywords = (
+                slide_data.get("title", "") + " "
+                + " ".join(slide_data.get("bullets", []))
+            ).lower()
+            words = {w for w in _re.split(r"\W+", keywords) if len(w) > 3 and w not in _STOP}
+            score = sum(1 for w in words if w in pg_text)
+            if score > best_score:
+                best_score, best_i = score, i
+        if best_i >= 0 and best_score > 0:
+            plan[best_i]["image_page"] = pg_num
+            already_used.add(pg_num)
+
+    assigned = [s["image_page"] for s in plan if s.get("image_page")]
+    console.print(f"  [green]✓[/] {len(plan)} slides planned, {len(assigned)} with figures: {assigned}")
 
     # ── Step 3: build PPTX ────────────────────────────────────────────────────
     console.print(f"\n[bold]Step 3/3[/] Building PPTX [cyan]{pptx_out.name}[/]…")

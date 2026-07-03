@@ -19,7 +19,7 @@ OUTPUT_DIR="$SCRIPT_DIR/output"
 
 if [[ ! -x "$T2S" ]]; then
     echo "Setting up environment (first run)..."
-    uv pip install $PYPI ollama pyttsx3 typer rich soundfile numpy click kokoro-onnx "misaki[en]" python-pptx pypdf imageio-ffmpeg pillow pyyaml
+    uv pip install $PYPI ollama pyttsx3 typer rich soundfile numpy click kokoro-onnx "misaki[en]" python-pptx pypdf pypdfium2 imageio-ffmpeg pillow pyyaml
     uv pip install $PYPI -e .
     echo ""
     echo "Ready. Kokoro model files (~300 MB) will be downloaded on first speak."
