@@ -22,15 +22,22 @@ from typing import Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
-# ── colour palette (light theme) ──────────────────────────────────────────
-BG        = (252, 252, 255)    # off-white slide background
-CHROME    = (235, 237, 243)    # nav bar / chrome areas
-ACCENT    = (37,  99, 235)     # blue accent (darker for contrast on light bg)
-TEXT_PRI  = (18,  18,  28)     # primary text
-TEXT_SEC  = (80,  80, 100)     # secondary text
-STROKE    = (200, 200, 210)    # dividers / borders
-WHITE     = (255, 255, 255)    # pure white (card backgrounds, etc.)
-DIM       = (100, 100, 120)    # de-emphasised text
+# ── colour palette — deep slate + sky-blue (matches pptx_builder) ─────────
+BG        = (248, 250, 252)    # near-white, slight blue tint
+HEADER    = ( 15,  23,  42)    # deep slate-navy
+HDR_MID   = ( 30,  41,  59)    # slightly lighter slate (depth band)
+SKY       = ( 14, 165, 233)    # sky-blue — single accent colour
+SKY_SOFT  = (224, 242, 254)    # very light sky
+TEXT_PRI  = ( 30,  41,  59)    # dark slate body text
+TEXT_SEC  = (100, 116, 139)    # slate-gray secondary
+STROKE    = (226, 232, 240)    # light rule / track
+WHITE     = (255, 255, 255)    # white (title on dark bg)
+DIM       = (148, 163, 184)    # muted counter
+IMG_BG    = (255, 255, 255)    # white image panel interior
+IMG_BDR   = ( 14, 165, 233)    # sky-blue image border
+# legacy aliases
+CHROME    = HEADER
+ACCENT    = SKY
 
 W, H = 1280, 720
 
@@ -185,25 +192,36 @@ def _draw_bullet_column(
     for item in items:
         if y + line_h > bottom:
             break
-        raw = _safe(item)
-        if not raw.strip():
-            y += line_h // 2
-            continue
-
-        is_indented = raw.startswith("  ") or raw.startswith("    ")
+        # Strip pptx_builder markers on the ORIGINAL string before _safe() mangles em-dashes
+        original = item.strip()
+        is_indented = item.startswith("  ") or item.startswith("    ")
         indent = 0
-        text = raw
 
         if is_indented:
-            indent = 28
-            text = raw.lstrip()
-            if text.startswith("- "):
-                text = text[2:]
-                cy = y + line_h // 2 - 3
-                draw.ellipse([x0 + indent - 14, cy, x0 + indent - 6, cy + 8], fill=ACCENT)
-            col = DIM
+            original = original.lstrip()
+            for marker in ("\u00b7  ", "\u25e6  ", "- ", "\u00b7 ", "\u2022 "):
+                if original.startswith(marker):
+                    original = original[len(marker):].lstrip()
+                    break
+            text = _safe(original)
+            col  = TEXT_SEC
         else:
-            col = TEXT_PRI
+            # strip pptx_builder primary markers (em-dash or ▸), then residual "- "
+            for marker in ("\u2014  ", "\u2014 ", "\u25b8  ", "\u25b8 ", "\u2022 "):
+                if original.startswith(marker):
+                    original = original[len(marker):].lstrip()
+                    break
+            if original.startswith("- "):
+                original = original[2:].lstrip()
+            text = _safe(original)
+            col  = TEXT_PRI
+            # draw sky-blue em-dash marker then indent for the text
+            draw.text((x0, y), "\u2014", font=f_body, fill=SKY)
+            indent = int(draw.textlength("\u2014 ", font=f_body))
+
+        if not text.strip():
+            y += line_h // 2
+            continue
 
         lines = _fit_text(text, f_body, col_w - indent - 4, max_lines)
         for ln in lines:
@@ -215,86 +233,150 @@ def _draw_bullet_column(
 
 def render_slide(spec: SlideSpec, out_path: Path, total: int = 0) -> None:
     """Render *spec* as a 1280×720 PNG saved to *out_path*."""
-    img = Image.new("RGB", (W, H), BG)
+    img  = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(img)
 
-    MARGIN = 56
-    NAV_H  = 50   # thin nav — no footer, maximise content space
-    BOTTOM = H - 14
-    max_w  = W - 2 * MARGIN
+    MARGIN = 60
+    n      = total if total > 0 else spec.index
 
-    # ── nav bar ─────────────────────────────────────────────────────────────
-    draw.rectangle([0, 0, W, NAV_H], fill=CHROME)
-    draw.line([0, NAV_H, W, NAV_H], fill=STROKE, width=1)
-    f_nav = _font(20)
-    label = _safe(spec.tag.upper()) if spec.tag else ""
-    draw.text((MARGIN, (NAV_H - 20) // 2), label, font=f_nav, fill=DIM)
-    n = total if total > 0 else spec.index
+    # ── title slide (first slide) — split-panel design ───────────────────────
+    if spec.index == 1:
+        PANEL_W = int(W * 0.57)
+        RIGHT_X = PANEL_W + 4
+
+        # left deep-slate panel
+        draw.rectangle([0, 0, PANEL_W, H], fill=HEADER)
+        # sky-blue top rule
+        draw.rectangle([0, 0, PANEL_W, 5], fill=SKY)
+        # sky-blue bottom rule
+        draw.rectangle([0, H - 5, PANEL_W, H], fill=SKY)
+        # sky-blue vertical join strip
+        draw.rectangle([PANEL_W, 0, PANEL_W + 4, H], fill=SKY)
+
+        # title
+        title_text = _safe(spec.title)
+        for fsz in [52, 42, 34, 28]:
+            f_title = _font(fsz, bold=True)
+            lines   = _wrap(title_text, f_title, PANEL_W - MARGIN * 2)
+            if len(lines) <= 3:
+                break
+        y = 145
+        step = int(f_title.size * 1.2)
+        for line in lines[:3]:
+            draw.text((MARGIN, y), line, font=f_title, fill=WHITE)
+            y += step
+
+        # tag (plain sky-blue text)
+        y += 14
+        if spec.tag and spec.tag.upper() not in ("SLIDE 1", "OVERVIEW"):
+            f_tag = _font(22)
+            draw.text((MARGIN, y), _safe(spec.tag), font=f_tag, fill=SKY)
+            y += 34
+
+        # key points
+        if spec.bullets:
+            f_b = _font(20)
+            for j, b in enumerate(spec.bullets[:5]):
+                # strip any existing markers before rendering
+                # strip pptx_builder markers before _safe() converts em-dash
+                bt = b.strip()
+                for mk in ("\u2014  ", "\u2014 ", "\u25b8  ", "\u25b8 ", "\u2022 "):
+                    if bt.startswith(mk):
+                        bt = bt[len(mk):].lstrip()
+                        break
+                if bt.startswith("- "):
+                    bt = bt[2:].lstrip()
+                bt = _safe(bt)
+                bline = "—  " + bt
+                wlines = _wrap(bline, f_b, PANEL_W - MARGIN * 2)
+                for wl in wlines[:2]:
+                    draw.text((MARGIN, y), wl, font=f_b,
+                              fill=(147, 197, 253))
+                    y += 28
+
+        # counter bottom-right of right panel
+        f_dim = _font(18)
+        counter = f"{spec.index} / {n}"
+        cw = int(draw.textlength(counter, font=f_dim))
+        draw.text((W - MARGIN - cw, H - MARGIN), counter, font=f_dim, fill=DIM)
+
+        # right panel decorative — single thin sky-blue vertical strip
+        draw.rectangle([RIGHT_X + 24, 140, RIGHT_X + 28, H - 140], fill=SKY)
+
+        img.save(str(out_path))
+        return
+
+    # ── content slides ────────────────────────────────────────────────────────
+    HDR_H  = 184
+    BOTTOM = H - 7
+
+    draw.rectangle([0, 0, W, HDR_H], fill=HEADER)
+    draw.rectangle([0, 0, W, 7], fill=HDR_MID)             # top depth band
+    draw.rectangle([0, HDR_H - 5, W, HDR_H], fill=SKY)    # sky accent line
+
+    # counter — white, top-right of header, unobtrusive
+    f_cnt = _font(18)
     counter = f"{spec.index} / {n}"
-    cw = int(draw.textlength(counter, font=f_nav))
-    draw.text((W - MARGIN - cw, (NAV_H - 20) // 2), counter, font=f_nav, fill=DIM)
-    # progress bar flush with bottom of nav
-    prog_filled = int(max_w * spec.index / n)
-    draw.rectangle([MARGIN, NAV_H - 4, W - MARGIN, NAV_H], fill=STROKE)
-    draw.rectangle([MARGIN, NAV_H - 4, MARGIN + prog_filled, NAV_H], fill=ACCENT)
+    cw = int(draw.textlength(counter, font=f_cnt))
+    draw.text((W - MARGIN - cw, 20), counter, font=f_cnt, fill=DIM)
 
-    y = NAV_H + 18
-
-    # ── section tag ─────────────────────────────────────────────────────────
-    f_tag = _font(22)
+    # tag — sky-blue, small caps, above title
+    y = 22
     if spec.tag:
-        draw.text((MARGIN, y), _safe(spec.tag), font=f_tag, fill=ACCENT)
+        f_tag = _font(18, bold=True)
+        draw.text((MARGIN, y), _safe(spec.tag.upper()), font=f_tag, fill=SKY)
         y += 30
 
-    # ── title — auto-scale so it always fits in ≤ 2 lines ──────────────────
-    title_text = _safe(spec.title)
-    f_title = _font(72, bold=True)
-    title_lines = _wrap(title_text, f_title, max_w)
-    if len(title_lines) > 2:
-        f_title = _font(56, bold=True)
-        title_lines = _wrap(title_text, f_title, max_w)
-    if len(title_lines) > 2:
-        f_title = _font(44, bold=True)
-        title_lines = _wrap(title_text, f_title, max_w)
+    # title — white bold, auto-sizing
+    title_text  = _safe(spec.title)
+    title_max_w = W - MARGIN - cw - 48
+    for fsz in [50, 40, 33, 27]:
+        f_title = _font(fsz, bold=True)
+        lines   = _wrap(title_text, f_title, title_max_w)
+        if len(lines) <= 2:
+            break
+    step = int(f_title.size * 1.15)
+    for line in lines[:2]:
+        draw.text((MARGIN, y), line, font=f_title, fill=WHITE)
+        y += step
 
-    title_step = int(f_title.size * 1.18)
-    for line in title_lines[:2]:
-        draw.text((MARGIN, y), line, font=f_title, fill=TEXT_PRI)
-        y += title_step
-    y += 10
+    # sky-blue progress bar at very bottom
+    prog_filled = int(W * spec.index / n)
+    draw.rectangle([0, H - 6, W, H], fill=STROKE)
+    draw.rectangle([0, H - 6, prog_filled, H], fill=SKY)
 
-    # ── divider ─────────────────────────────────────────────────────────────
-    draw.line([MARGIN, y, W - MARGIN, y], fill=STROKE, width=1)
-    y += 16
-
+    # content area
+    y        = HDR_H + 22
     body_top = y
-    body_h   = BOTTOM - body_top
+    body_h   = BOTTOM - 6 - body_top
 
-    # ── quote (if any) ───────────────────────────────────────────────────────
+    # slim sky-blue left accent bar
+    draw.rectangle([MARGIN - 16, body_top, MARGIN - 11, BOTTOM - 6], fill=SKY)
+
+    # quote (if any)
     if spec.quote:
-        f_q = _font(30)
-        q_lines = _wrap(f'"{_safe(spec.quote)}"', f_q, max_w - 20)
+        f_q = _font(28)
+        q_lines = _wrap(f'"{_safe(spec.quote)}"', f_q, W - 2 * MARGIN - 20)
         bar_top = y
         for ql in q_lines[:3]:
-            draw.text((MARGIN + 18, y), ql, font=f_q, fill=DIM)
-            y += 38
-        draw.rectangle([MARGIN, bar_top, MARGIN + 4, y], fill=ACCENT)
-        y += 10
+            draw.text((MARGIN + 14, y), ql, font=f_q, fill=DIM)
+            y += 36
+        draw.rectangle([MARGIN, bar_top, MARGIN + 4, y], fill=SKY)
+        y += 8
         body_top = y
-        body_h = BOTTOM - body_top
+        body_h   = BOTTOM - 6 - body_top
 
-    # ── decide layout: images present? ──────────────────────────────────────
+    # layout: bullets + optional image panel
+    max_w       = W - 2 * MARGIN
     has_images  = bool(spec.images)
     has_bullets = bool(spec.bullets or spec.right_bullets)
-    IMG_GAP     = 24   # gap between bullet column and image panel
+    IMG_GAP     = 24
 
     if has_images and has_bullets:
-        # bullets on left ~55%, images on right ~42%
-        bullet_col_w = int(max_w * 0.55)
+        bullet_col_w = int(max_w * 0.54)
         img_panel_x  = MARGIN + bullet_col_w + IMG_GAP
         img_panel_w  = W - MARGIN - img_panel_x
     elif has_images:
-        # no bullets — images fill the whole content area
         bullet_col_w = 0
         img_panel_x  = MARGIN
         img_panel_w  = max_w
@@ -303,16 +385,13 @@ def render_slide(spec: SlideSpec, out_path: Path, total: int = 0) -> None:
         img_panel_x  = 0
         img_panel_w  = 0
 
-    # ── bullets — adaptive font + two-column when needed ────────────────────
     if has_bullets:
         all_b   = spec.bullets
         right_b = spec.right_bullets
-
         if right_b:
             left_items, right_items = all_b, right_b
             two_col = True
         elif has_images:
-            # with an image panel, never auto-split into two bullet columns
             left_items, right_items = all_b, []
             two_col = False
         elif len(all_b) > 6:
@@ -323,42 +402,32 @@ def render_slide(spec: SlideSpec, out_path: Path, total: int = 0) -> None:
             left_items, right_items = all_b, []
             two_col = False
 
-        col_gap = 32
-        n_rows  = max(len(left_items), len(right_items)) if two_col else len(left_items)
+        col_gap              = 32
+        n_rows               = max(len(left_items), len(right_items)) if two_col else len(left_items)
         max_lines_per_bullet = 1 if n_rows > 8 else 2
 
-        for bsz in [40, 34, 29, 25, 22, 19]:
-            lh   = int(bsz * 1.42)
-            cw   = (bullet_col_w - col_gap) // 2 if two_col else bullet_col_w
+        for bsz in [38, 32, 28, 24, 20, 18]:
+            lh   = int(bsz * 1.44)
+            cw_b = (bullet_col_w - col_gap) // 2 if two_col else bullet_col_w
             f_b  = _font(bsz)
-            lh_m = _measure_bullets(left_items,  f_b, cw, lh, max_lines_per_bullet)
-            rh_m = _measure_bullets(right_items, f_b, cw, lh, max_lines_per_bullet) if right_items else 0
+            lh_m = _measure_bullets(left_items,  f_b, cw_b, lh, max_lines_per_bullet)
+            rh_m = _measure_bullets(right_items, f_b, cw_b, lh, max_lines_per_bullet) if right_items else 0
             if max(lh_m, rh_m) <= body_h:
                 break
 
         f_body = _font(bsz)
-        lh     = int(bsz * 1.42)
+        lh     = int(bsz * 1.44)
         col_w  = (bullet_col_w - col_gap) // 2 if two_col else bullet_col_w
-
-        accent_bar_x = MARGIN - 16
-        est_h = _measure_bullets(left_items, f_body, col_w, lh)
-        if right_items:
-            est_h = max(est_h, _measure_bullets(right_items, f_body, col_w, lh))
-        draw.rectangle(
-            [accent_bar_x, body_top, accent_bar_x + 3, min(body_top + est_h, BOTTOM)],
-            fill=ACCENT,
-        )
 
         _draw_bullet_column(draw, left_items,  f_body, MARGIN,              body_top, col_w, BOTTOM, lh, max_lines_per_bullet)
         if two_col:
             _draw_bullet_column(draw, right_items, f_body, MARGIN + col_w + col_gap, body_top, col_w, BOTTOM, lh, max_lines_per_bullet)
 
-    # ── images ───────────────────────────────────────────────────────────────
     if has_images:
         import io as _io
-        panel_h     = BOTTOM - body_top
-        n_imgs      = len(spec.images)
-        slot_h      = (panel_h - IMG_GAP * (n_imgs - 1)) // n_imgs
+        panel_h = BOTTOM - 6 - body_top
+        n_imgs  = len(spec.images)
+        slot_h  = (panel_h - IMG_GAP * (n_imgs - 1)) // n_imgs
 
         iy = body_top
         for blob in spec.images:
@@ -368,20 +437,21 @@ def render_slide(spec: SlideSpec, out_path: Path, total: int = 0) -> None:
                 iy += slot_h + IMG_GAP
                 continue
 
-            # scale to fit slot while preserving aspect ratio
             iw, ih = src.size
             scale  = min(img_panel_w / iw, slot_h / ih, 1.0)
             nw     = max(1, int(iw * scale))
             nh     = max(1, int(ih * scale))
             src    = src.resize((nw, nh), Image.LANCZOS)
 
-            # center horizontally within the panel
             ox = img_panel_x + (img_panel_w - nw) // 2
             oy = iy + (slot_h - nh) // 2
-
-            # paste with alpha mask so PNGs with transparency work
+            # sky-blue border → white interior → image
+            bdr = 4
+            draw.rectangle([ox - bdr - 5, oy - bdr - 5,
+                             ox + nw + bdr + 5, oy + nh + bdr + 5], fill=IMG_BDR)
+            draw.rectangle([ox - bdr, oy - bdr,
+                             ox + nw + bdr, oy + nh + bdr], fill=IMG_BG)
             img.paste(src, (ox, oy), mask=src.split()[3] if src.mode == "RGBA" else None)
-
             iy += slot_h + IMG_GAP
 
     img.save(str(out_path))

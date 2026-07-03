@@ -33,9 +33,47 @@ Output goes to `output/<timestamp>_<name>.mp4` by default.
 
 ---
 
-## PDF manuscript → narrated video (automated)
+## PDF manuscript → slides (recommended: Claude plans)
 
-The `--paper` flag runs the full pipeline end-to-end with one command:
+The highest-quality workflow has **Claude read the PDF and write the slide plan** directly.
+No Ollama required — invoke the `/paper-to-slides` skill in Cursor:
+
+```
+paper.pdf ──► Claude reads & plans ──► JSON slide plan
+           ──► pptx_builder → styled PPTX (bullets + figures + narration in Notes)
+```
+
+```bash
+# Step 1: Claude generates the JSON plan (via /paper-to-slides skill)
+# Step 2: Build the PPTX
+python3 - <<'EOF'
+import json, warnings
+from pathlib import Path
+warnings.filterwarnings("ignore", message=".*Lookup Table.*")
+from text2speech.pptx_builder import build_pptx
+plan = json.load(open("/tmp/plan.json"))
+build_pptx(plan, Path("data/my-talk.pptx"), Path("paper.pdf"))
+EOF
+
+# Step 3 (optional): Render narrated video from the PPTX
+./run.sh data/my-talk.pptx --engine kokoro --voice bm_george
+```
+
+### What each slide plan field controls
+
+| Field | On-slide | In video |
+|---|---|---|
+| `title` | Slide header (bold, white on navy) | — |
+| `tag` | Section label in sky-blue above the title | — |
+| `bullets` | Concise key points (em-dash markers) | Visible on screen |
+| `narration` | Stored in Notes pane | Spoken as voice-over |
+| `image_page` | Figure from that PDF page (right panel) | Visible on screen |
+
+---
+
+## PDF manuscript → slides (automated: Ollama)
+
+For batch automation without Cursor, the `--paper` flag runs the full pipeline:
 
 ```
 paper.pdf ──► extract text ──► Ollama LLM ──► slide plan
@@ -59,15 +97,6 @@ Ollama must be running locally (`ollama serve`) with a model pulled
 (`ollama pull llama3.2`).  The PPTX is saved next to the PDF; the MP4
 goes to `output/`.
 
-### What the LLM produces per slide
-
-| Field | On-slide | In video |
-|---|---|---|
-| `title` | Slide header | — |
-| `bullets` | Concise key points | Visible on screen |
-| `narration` | Stored in Notes | Spoken as voice-over |
-| `image_page` | Figure from that PDF page | Visible on screen |
-
 ---
 
 ## How slides are rendered
@@ -75,18 +104,21 @@ goes to `output/`.
 When you pass any supported file to `./run.sh`, the pipeline:
 
 1. **Parses** the file into a list of `SlideSpec` objects:
-   - `.pptx` — title from shape named `slide_title`; bullets from body text boxes;
+   - `.pptx` — title from shape named `slide_title`; bullets from body text boxes
+     (chrome shapes `slide_tag`, `slide_counter` are excluded automatically);
      narration from presenter Notes; figures from picture shapes
    - `.pdf` — title from first line per page; body from remaining text;
      figures from embedded images
    - `.yaml` — structured `title`, `bullets`, `narration`, `right_bullets` fields
    - `.tsx` — parses `SlideSpec(...)` call arguments with regex
 
-2. **Renders** each slide to a 1280×720 PNG (Pillow):
-   - Light background, dark navy accent, blue progress bar
-   - Auto-scaling title and body fonts
-   - Two-column bullet layout for dense slides
-   - Images composited into the right panel
+2. **Renders** each slide to a 1280×720 PNG (Pillow) — **professional dark-slate + sky-blue theme**:
+   - **Title slide**: split-panel (57% deep-navy / 43% near-white), sky-blue join strip
+   - **Content slides**: deep-slate header with sky-blue accent line at bottom,
+     sky-blue section tag and em-dash bullet markers, slim left accent bar,
+     sky-blue progress bar at the bottom
+   - Auto-scaling title and body fonts; two-column bullet layout for dense slides
+   - Images in right panel with sky-blue border and white interior
 
 3. **Generates narration audio** per slide (Kokoro or pyttsx3)
 
@@ -215,14 +247,15 @@ required after the initial one-time model download.
 text2speech/
 ├── run.sh                          # Main entry point
 ├── src/text2speech/
-│   ├── cli.py                      # typer CLI (canvas-video, canvas-mp3, speak, …)
-│   ├── canvas_video.py             # Slide renderer + video assembler
-│   ├── slides.py                   # PPTX / PDF reader → Slide objects
-│   └── tts.py                      # TTS engine abstraction
-├── .cursor/skills/paper-to-slides/ # paper-to-slides Cursor skill
-│   ├── SKILL.md
-│   └── scripts/create_pptx.py      # Styled PPTX builder
-└── ashby-how-to-write-paper.yaml   # Example slide deck (YAML format)
+│   ├── cli.py                      # typer CLI (paper-to-slides, canvas-video, speak, …)
+│   ├── pptx_builder.py             # Builds styled PPTX from a JSON slide plan
+│   ├── canvas_video.py             # Renders slides to PNG + assembles MP4
+│   ├── slides.py                   # PPTX / PDF / YAML reader → SlideSpec objects
+│   └── tts.py                      # TTS engine abstraction (Kokoro / pyttsx3)
+├── .cursor/skills/paper-to-slides/ # /paper-to-slides Cursor skill
+│   └── SKILL.md
+├── data/                           # Generated PPTX files
+└── output/                         # Generated MP4 videos
 ```
 
 ---

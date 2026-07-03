@@ -96,25 +96,41 @@ python3 -c "import json; d=json.load(open('/tmp/plan.json')); print(len(d), 'sli
 
 ### Step 3 — Build the PPTX
 
+Use the actual paths from the user's workspace (`pdf_path` must point to the original PDF so figures can be extracted):
+
 ```bash
-cd /path/to/manuscript2presentation && source .venv/bin/activate
+cd /userworkqum/bisarkar/text2speech && source .venv/bin/activate
 python3 - <<'EOF'
 import json, warnings
 from pathlib import Path
 warnings.filterwarnings("ignore", message=".*Lookup Table.*")
 from text2speech.pptx_builder import build_pptx
 
-plan = json.load(open("/tmp/plan.json"))
-build_pptx(plan, Path("output.pptx"), Path("paper.pdf"))
+plan     = json.load(open("/tmp/plan.json"))
+out_pptx = Path("data/my-talk.pptx")   # ← output path
+pdf_path = Path("data/paper.pdf")       # ← original PDF (for figure extraction)
+build_pptx(plan, out_pptx, pdf_path)
 EOF
 ```
 
-### Step 4 — Render the narrated video
+The generated PPTX uses a **professional deep-slate + sky-blue design**:
+- Title slide: split-panel (dark left / light right) with sky-blue accent strips
+- Content slides: dark header, sky-blue section tag, em-dash bullet markers,
+  slim sky-blue left accent bar, sky-blue progress bar
+- Figures: right panel with sky-blue border, white interior; left panel holds bullets
+- Narration stored in the Notes pane of every slide
+
+### Step 4 — Done
+
+Open `data/my-talk.pptx` in LibreOffice or PowerPoint to review the slides and figures.
+Narration text is in the Notes pane of each slide.
+
+To render a narrated MP4 later:
 
 ```bash
-./run.sh output.pptx --slide
+./run.sh data/my-talk.pptx --slide
 # With a specific voice:
-./run.sh output.pptx --slide --engine kokoro --voice bm_george
+./run.sh data/my-talk.pptx --slide --engine kokoro --voice bm_george
 ```
 
 ---
@@ -206,5 +222,7 @@ uv pip install pypdf pypdfium2 python-pptx pillow ollama
 - **Claude workflow produces better slides** than Ollama because it understands context, argument structure, and what makes a good narration sentence.
 - **Dense papers**: focus the plan on contributions, method, and results; skip background material that the audience can look up.
 - **Spread figures**: assign different `image_page` values across slides so the deck feels visually varied.
-- **Edit then re-render**: open the PPTX in LibreOffice/PowerPoint, tweak bullets or narration in the Notes pane, then re-run `./run.sh output.pptx --slide` to regenerate the video without re-planning.
+- **Video is optional**: the skill stops at the PPTX. Run `./run.sh data/my-talk.pptx --slide` separately when you are happy with the slides.
+- **Edit then re-render**: tweak bullets or narration in the Notes pane in LibreOffice/PowerPoint, then re-run `./run.sh data/my-talk.pptx --slide` to regenerate the video without re-planning.
 - **Voice selection**: `--voice bm_george` (male, British) or `--voice af_heart` (female, American). Run `./run.sh list-voices --engine kokoro` for the full list.
+- **Slide design**: All slides use the professional deep-slate + sky-blue theme defined in `src/text2speech/pptx_builder.py`. The same palette is mirrored in `canvas_video.py` so the video frames match the PPTX exactly.

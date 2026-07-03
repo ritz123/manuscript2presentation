@@ -66,8 +66,11 @@ def read_pptx(path: Path) -> list[Slide]:
                     pass
                 continue
 
-            # Named title shape (produced by create_pptx.py blank-layout slides)
-            if getattr(shape, "name", "") == "slide_title":
+            # Named chrome shapes — skip them so they don't pollute bullet content
+            shape_name = getattr(shape, "name", "")
+            if shape_name in ("slide_counter", "slide_tag"):
+                continue
+            if shape_name == "slide_title":
                 if shape.has_text_frame and not title:
                     title = _clean(shape.text_frame.text)
                 continue

@@ -13,30 +13,36 @@ from pptx.util import Inches, Pt, Emu
 W = Inches(13.333)
 H = Inches(7.5)
 
-# ── Colour palette ─────────────────────────────────────────────────────────────
+# ── Colour palette — deep slate + sky-blue ─────────────────────────────────────
 from pptx.dml.color import RGBColor
 
-C_BG      = RGBColor(0xF8, 0xFA, 0xFC)   # very light blue-gray background
-C_HEADER  = RGBColor(0x0F, 0x17, 0x2A)   # deep navy
-C_ACCENT  = RGBColor(0x38, 0x82, 0xF6)   # blue accent
-C_ACCENT2 = RGBColor(0x93, 0xC5, 0xFD)   # light blue (tag text in header)
-C_TITLE   = RGBColor(0xFF, 0xFF, 0xFF)   # white title on header
-C_TEXT    = RGBColor(0x1E, 0x29, 0x3B)   # dark body text
-C_SUB     = RGBColor(0x47, 0x55, 0x69)   # gray sub-bullet text
-C_DIM     = RGBColor(0x94, 0xA3, 0xB8)   # dim counter / rule
-C_RULE    = RGBColor(0xE2, 0xE8, 0xF0)   # light rule line
-C_IMGBG   = RGBColor(0xEF, 0xF6, 0xFF)   # image panel tint
+C_BG       = RGBColor(0xF8, 0xFA, 0xFC)  # near-white, slight blue tint
+C_HEADER   = RGBColor(0x0F, 0x17, 0x2A)  # deep slate-navy
+C_HDR_MID  = RGBColor(0x1E, 0x29, 0x3B)  # lighter slate (depth band at top)
+C_SKY      = RGBColor(0x0E, 0xA5, 0xE9)  # sky-blue — single accent colour
+C_SKY_SOFT = RGBColor(0xE0, 0xF2, 0xFE)  # very light sky (image panel fill)
+C_TITLE    = RGBColor(0xFF, 0xFF, 0xFF)  # white
+C_TEXT     = RGBColor(0x1E, 0x29, 0x3B)  # dark slate body text
+C_SUB      = RGBColor(0x64, 0x74, 0x8B)  # slate-gray sub-bullet
+C_DIM      = RGBColor(0x94, 0xA3, 0xB8)  # muted counter / decorative
+C_RULE     = RGBColor(0xE2, 0xE8, 0xF0)  # light rule / progress track
+C_IMGBG    = RGBColor(0xFF, 0xFF, 0xFF)  # white image panel interior
+C_IMGBDR   = RGBColor(0x0E, 0xA5, 0xE9)  # sky-blue image border
+
+# backward-compat aliases used in canvas_video.py
+C_ACCENT  = C_SKY
+C_ACCENT2 = RGBColor(0x7D, 0xD3, 0xFC)  # light sky
 
 # ── Layout constants (Inches) ──────────────────────────────────────────────────
-HDR_H    = Inches(2.1)      # header height
-ACCENT_W = Inches(0.07)     # left accent bar width
-MARGIN_X = Inches(0.55)     # left margin
-MARGIN_Y = Inches(0.3)      # top margin inside header
-GUTTER   = Inches(0.25)     # gap between accent bar and bullet text
-IMG_X    = Inches(8.9)      # image panel left edge
-IMG_W    = Inches(4.1)      # image panel width
-IMG_TOP  = Inches(2.25)     # image panel top
-IMG_BTM  = Inches(7.1)      # image panel bottom
+HDR_H    = Inches(1.92)     # header height (tighter = more content space)
+ACCENT_W = Inches(0.06)     # slim left accent bar
+MARGIN_X = Inches(0.62)     # left margin
+MARGIN_Y = Inches(0.26)     # top margin inside header
+GUTTER   = Inches(0.22)     # gap between accent bar and bullets
+IMG_X    = Inches(8.80)     # image panel left edge
+IMG_W    = Inches(4.20)     # image panel width
+IMG_TOP  = Inches(2.08)     # image panel top
+IMG_BTM  = Inches(7.15)     # image panel bottom
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -180,59 +186,66 @@ def _render_slide(prs, slide_data: dict, idx: int, total: int,
 def _render_title_slide(slide, title, tag, bullets, narration, idx, total):
     from pptx.enum.text import PP_ALIGN
 
-    # full-height dark panel on the left 55%
-    panel_w = int(W * 0.55)
+    panel_w = int(W * 0.57)   # left dark panel — 57% of slide width
+    right_x = panel_w + Inches(0.04)
+    right_w = W - right_x
+
+    # ── left panel ────────────────────────────────────────────────────────────
     _add_rect(slide, 0, 0, panel_w, H, C_HEADER)
 
-    # accent strip at bottom of panel
-    _add_rect(slide, 0, H - Inches(0.12), panel_w, Inches(0.12), C_ACCENT)
+    # sky-blue top rule (4 px) — subtle depth cue
+    _add_rect(slide, 0, 0, panel_w, Inches(0.055), C_SKY)
 
-    # title text
-    tb = _textbox(slide, MARGIN_X, Inches(1.8), panel_w - MARGIN_X - Inches(0.3), Inches(2.4))
+    # sky-blue bottom rule (4 px)
+    _add_rect(slide, 0, H - Inches(0.055), panel_w, Inches(0.055), C_SKY)
+
+    # sky-blue vertical strip at the join
+    _add_rect(slide, panel_w, 0, Inches(0.042), H, C_SKY)
+
+    # ── title on left panel ───────────────────────────────────────────────────
+    title_top = Inches(1.5)
+    title_w   = panel_w - MARGIN_X - Inches(0.5)
+    tb = _textbox(slide, MARGIN_X, title_top, title_w, Inches(2.8))
     tb.name = "slide_title"
     tf = tb.text_frame
     tf.word_wrap = True
     p = tf.paragraphs[0]
     p.text = title
     run = p.runs[0]
-    run.font.size = Pt(44)
-    run.font.bold = True
+    run.font.size  = Pt(42 if len(title) < 38 else (34 if len(title) < 55 else 28))
+    run.font.bold  = True
     run.font.color.rgb = C_TITLE
-    run.font.name = "Calibri"
+    run.font.name  = "Calibri"
 
-    # tag / subtitle
-    if tag or bullets:
-        sub_text = tag if tag else (bullets[0] if bullets else "")
-        tb2 = _textbox(slide, MARGIN_X, Inches(4.4), panel_w - MARGIN_X - Inches(0.3), Inches(0.6))
-        tf2 = tb2.text_frame
-        p2  = tf2.paragraphs[0]
-        p2.text = sub_text
-        run2 = p2.runs[0]
-        run2.font.size = Pt(18)
-        run2.font.color.rgb = C_ACCENT2
-        run2.font.name = "Calibri"
+    # ── tag / subtitle below title ────────────────────────────────────────────
+    tag_y = Inches(4.55)
+    if tag:
+        tb_tag = _textbox(slide, MARGIN_X, tag_y, title_w, Inches(0.45))
+        tb_tag.name = "slide_tag"
+        _para(tb_tag.text_frame, tag, 15, bold=False, color=C_SKY)
+        tag_y += Inches(0.50)
 
-    # bullet list on left panel (remaining bullets)
-    show_bullets = bullets[1:] if (tag or bullets) else bullets
-    if show_bullets:
-        tb3 = _textbox(slide, MARGIN_X, Inches(5.2), panel_w - MARGIN_X - Inches(0.3), Inches(1.8))
+    # ── key points (up to 4) on left panel ───────────────────────────────────
+    if bullets:
+        tb3 = _textbox(slide, MARGIN_X, tag_y, title_w, H - tag_y - Inches(0.4))
         tf3 = tb3.text_frame
         tf3.word_wrap = True
-        for j, b in enumerate(show_bullets[:5]):
-            _para(tf3, ("• " if not b.startswith("  ") else "  ◦ ") + b.lstrip(),
-                  16, color=RGBColor(0xCB, 0xD5, 0xE1),
-                  space_before_pt=(4 if j > 0 else 0))
+        for j, b in enumerate(bullets[:4]):
+            _para(tf3, "—  " + b.lstrip(), 14,
+                  color=RGBColor(0x93, 0xC5, 0xFD),
+                  space_before_pt=(6 if j > 0 else 0))
 
-    # decorative right side — light accent column
-    right_x = panel_w + Inches(0.15)
-    _add_rect(slide, right_x, Inches(1.5), Inches(0.06), Inches(4.5), C_ACCENT)
+    # ── right panel — decorative, clean ──────────────────────────────────────
+    # single restrained sky-blue accent strip, left of right panel
+    _add_rect(slide, right_x + Inches(0.28), Inches(1.6),
+              Inches(0.04), Inches(4.3), C_SKY)
 
-    # slide counter bottom right
-    tb4 = _textbox(slide, W - Inches(1.5), H - Inches(0.45), Inches(1.3), Inches(0.35))
-    tf4 = tb4.text_frame
-    _para(tf4, f"{idx} / {total}", 13, color=C_DIM, align=None)
+    # slide counter — bottom right corner, unobtrusive
+    tb4 = _textbox(slide, W - Inches(1.4), H - Inches(0.48),
+                   Inches(1.2), Inches(0.36))
+    tb4.name = "slide_counter"
+    _para(tb4.text_frame, f"{idx} / {total}", 12, color=C_DIM)
 
-    # narration in notes
     if narration:
         slide.notes_slide.notes_text_frame.text = narration
 
@@ -241,68 +254,66 @@ def _render_content_slide(slide, title, tag, bullets, narration,
                            idx, total, image_page, pdf_path):
     from pptx.enum.text import PP_ALIGN
 
-    # ── header bar ───────────────────────────────────────────────────────────
+    # ── header (deep slate, full width) ──────────────────────────────────────
     _add_rect(slide, 0, 0, W, HDR_H, C_HEADER)
-    # accent line at bottom of header
-    _add_rect(slide, 0, HDR_H - Inches(0.07), W, Inches(0.07), C_ACCENT)
 
-    # tag label (small, light blue)
+    # slight depth band at very top (8 px lighter slate)
+    _add_rect(slide, 0, 0, W, Inches(0.08), C_HDR_MID)
+
+    # sky-blue rule at bottom of header
+    _add_rect(slide, 0, HDR_H - Inches(0.055), W, Inches(0.055), C_SKY)
+
+    # ── tag (plain sky-blue text, no badge, above title) ─────────────────────
     if tag:
-        tb_tag = _textbox(slide, MARGIN_X, MARGIN_Y, W - MARGIN_X * 2, Inches(0.35))
-        tf_tag = tb_tag.text_frame
-        _para(tf_tag, tag, 13, color=C_ACCENT2)
+        tb_tag = _textbox(slide, MARGIN_X, MARGIN_Y, W - MARGIN_X * 2 - Inches(1.2), Inches(0.34))
+        tb_tag.name = "slide_tag"
+        _para(tb_tag.text_frame, tag, 11, bold=True, color=C_SKY)
 
-    # title
-    title_top = MARGIN_Y + (Inches(0.32) if tag else 0)
-    title_h   = HDR_H - title_top - Inches(0.2)
-    tb_title = _textbox(slide, MARGIN_X, title_top, W - MARGIN_X * 2 - Inches(1.4), title_h)
+    # ── title ─────────────────────────────────────────────────────────────────
+    title_top = MARGIN_Y + (Inches(0.36) if tag else Inches(0.04))
+    title_h   = HDR_H - title_top - Inches(0.10)
+    tb_title  = _textbox(slide, MARGIN_X, title_top,
+                          W - MARGIN_X - Inches(1.5), title_h)
     tb_title.name = "slide_title"
     tb_title.text_frame.word_wrap = True
     p = tb_title.text_frame.paragraphs[0]
     p.text = title
-
-    # auto-shrink title font if long
-    font_sz = 36 if len(title) < 40 else (28 if len(title) < 60 else 22)
+    font_sz = 32 if len(title) < 42 else (25 if len(title) < 62 else 20)
     run = p.runs[0]
-    run.font.size   = Pt(font_sz)
-    run.font.bold   = True
+    run.font.size      = Pt(font_sz)
+    run.font.bold      = True
     run.font.color.rgb = C_TITLE
-    run.font.name   = "Calibri"
+    run.font.name      = "Calibri"
 
-    # slide counter — top right of header
-    tb_cnt = _textbox(slide, W - Inches(1.6), MARGIN_Y + Inches(0.6),
-                      Inches(1.4), Inches(0.4))
-    tf_cnt = tb_cnt.text_frame
-    _para(tf_cnt, f"{idx} / {total}", 14, color=C_DIM)
+    # ── counter — right-aligned in header, unobtrusive ───────────────────────
+    tb_cnt = _textbox(slide, W - Inches(1.5), MARGIN_Y + Inches(0.55),
+                      Inches(1.3), Inches(0.38))
+    tb_cnt.name = "slide_counter"
+    _para(tb_cnt.text_frame, f"{idx} / {total}", 13, color=C_DIM)
 
-    # progress bar at very bottom
+    # ── sky-blue progress bar at very bottom ──────────────────────────────────
     prog_frac = idx / total
-    _add_rect(slide, 0, H - Inches(0.08), W, Inches(0.08), C_RULE)
-    _add_rect(slide, 0, H - Inches(0.08), int(W * prog_frac), Inches(0.08), C_ACCENT)
+    _add_rect(slide, 0, H - Inches(0.065), W, Inches(0.065), C_RULE)
+    _add_rect(slide, 0, H - Inches(0.065), int(W * prog_frac), Inches(0.065), C_SKY)
 
-    # ── content area layout ──────────────────────────────────────────────────
-    content_top = HDR_H + Inches(0.22)
-    content_bot = H - Inches(0.2)
+    # ── content area ──────────────────────────────────────────────────────────
+    content_top = HDR_H + Inches(0.28)
+    content_bot = H - Inches(0.14)
     content_h   = content_bot - content_top
 
-    # try to fetch image
     img_blob = None
     if image_page and pdf_path:
         img_blob = _extract_pdf_page_image(pdf_path, image_page)
 
-    # left accent bar
-    _add_rect(slide, MARGIN_X - Inches(0.18), content_top,
-              ACCENT_W, content_h, C_ACCENT)
-
-    # bullet column width depends on whether there is an image
-    if img_blob:
-        bullet_w = IMG_X - MARGIN_X - GUTTER - Inches(0.15)
-    else:
-        bullet_w = W - MARGIN_X - Inches(0.4)
+    # slim sky-blue left accent bar
+    _add_rect(slide, MARGIN_X - Inches(0.22), content_top,
+              ACCENT_W, content_h, C_SKY)
 
     bullet_x = MARGIN_X + GUTTER
+    bullet_w = (IMG_X - MARGIN_X - GUTTER - Inches(0.18)) if img_blob \
+               else (W - MARGIN_X - Inches(0.55))
 
-    # ── bullets ──────────────────────────────────────────────────────────────
+    # ── bullets ───────────────────────────────────────────────────────────────
     if bullets:
         tb_b = _textbox(slide, bullet_x, content_top, bullet_w, content_h)
         tf_b = tb_b.text_frame
@@ -318,43 +329,37 @@ def _render_content_slide(slide, title, tag, bullets, narration,
                 if j > 0:
                     _para(tf_b, "", base_sz - 4, space_before_pt=2)
                 continue
-            prefix = "  ◦ " if is_sub else "• "
+            prefix = "     ·  " if is_sub else "—  "
             color  = C_SUB if is_sub else C_TEXT
             sz     = base_sz - 3 if is_sub else base_sz
             _para(tf_b, prefix + text, sz, color=color,
-                  space_before_pt=(6 if j > 0 and not is_sub else 2))
+                  space_before_pt=(8 if j > 0 and not is_sub else 2))
 
-    # ── image ─────────────────────────────────────────────────────────────────
+    # ── image panel ───────────────────────────────────────────────────────────
     if img_blob:
         try:
             from PIL import Image as PILImage
             pil = PILImage.open(io.BytesIO(img_blob))
             iw, ih = pil.size
 
-            # image panel bounds
             panel_h = int(content_bot - IMG_TOP)
             panel_w = int(IMG_W)
+            scale   = min(panel_w / iw, panel_h / ih)
+            nw      = max(914, int(iw * scale))
+            nh      = max(914, int(ih * scale))
 
-            # scale to fit panel preserving aspect ratio.
-            # panel_w/panel_h are in EMU; iw/ih are in pixels — the ratio
-            # gives EMU-per-pixel, producing nw/nh in EMU as required by add_picture.
-            scale = min(panel_w / iw, panel_h / ih)
-            nw = max(914, int(iw * scale))   # at least 0.001" (1 px guard)
-            nh = max(914, int(ih * scale))
+            # sky-blue border → white interior → image
+            _add_rect(slide, IMG_X - Inches(0.10), IMG_TOP - Inches(0.10),
+                      IMG_W + Inches(0.20), Inches(panel_h / 914400 + 0.20), C_IMGBDR)
+            _add_rect(slide, IMG_X - Inches(0.05), IMG_TOP - Inches(0.05),
+                      IMG_W + Inches(0.10), Inches(panel_h / 914400 + 0.10), C_IMGBG)
 
-            # tinted background for image area
-            _add_rect(slide, IMG_X - Inches(0.1), IMG_TOP - Inches(0.1),
-                      IMG_W + Inches(0.2), Inches(panel_h / 914400 + 0.2), C_IMGBG)
-
-            # center within panel
             ox = IMG_X + (IMG_W - nw) // 2
             oy = IMG_TOP + (panel_h - nh) // 2
-
             slide.shapes.add_picture(io.BytesIO(img_blob), ox, oy, nw, nh)
         except Exception:
             pass
 
-    # ── narration in notes ───────────────────────────────────────────────────
     if narration:
         slide.notes_slide.notes_text_frame.text = narration
 
