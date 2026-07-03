@@ -1,9 +1,167 @@
 # text2speech
 
-A fully **offline** text-to-speech CLI powered by:
+Convert any document into a **narrated video presentation** — entirely offline.
 
-- **[Ollama](https://ollama.ai)** — local LLM models for optional text preprocessing / summarization
-- **[pyttsx3](https://pyttsx3.readthedocs.io)** — offline TTS using the system speech engine (`espeak-ng` on Linux)
+Give it a PDF, PowerPoint, YAML, or TSX slide deck and get back an MP4 with
+synchronized voice-over, rendered slides, and embedded figures.
+
+---
+
+## Quick start
+
+```bash
+# Generate a narrated MP4 from a PowerPoint (auto-timestamped output)
+./run.sh slides.pptx
+
+# Use the high-quality neural Kokoro voice
+./run.sh slides.pptx --engine kokoro
+
+# Choose a specific voice (male British, great for academic content)
+./run.sh slides.pptx --engine kokoro --voice bm_george
+
+# Render only a range of slides
+./run.sh slides.pptx --engine kokoro --slides 1-5
+
+# Save to a specific path
+./run.sh slides.pptx --engine kokoro --output ~/Desktop/talk.mp4
+```
+
+**Accepted input formats:** `.pptx` · `.pdf` · `.yaml` · `.tsx`
+
+Output goes to `output/<timestamp>_<name>.mp4` by default.
+
+---
+
+## PDF → PPTX → Video (paper-to-slides skill)
+
+The project includes a **`paper-to-slides`** skill that turns any research PDF
+into a styled PPTX and then into a narrated video in three steps.
+
+### Step 1 — Extract PDF text and generate a slide plan
+
+```python
+import pypdf, json
+
+reader    = pypdf.PdfReader("paper.pdf")
+full_text = "\n\n--- PAGE BREAK ---\n\n".join(
+    p.extract_text() or "" for p in reader.pages
+)
+```
+
+Feed `full_text` to an LLM with this prompt (adjust slide count to taste):
+
+```
+You are a presentation designer. Read the document below and produce a slide
+plan as a JSON array.
+
+Rules:
+- 8-14 slides total (first = title/overview, last = conclusions/takeaways)
+- "title": short slide title (<= 8 words)
+- "bullets": 4-6 concise on-slide points (<= 12 words each, no full sentences)
+- "narration": 3-5 full spoken sentences expanding on the bullets
+- "image_page": (optional integer) PDF page number with the best figure
+- Output ONLY valid JSON, no prose
+
+Document:
+<full_text here>
+```
+
+Save the response as `plan.json`.
+
+### Step 2 — Build the styled PPTX
+
+```bash
+python .cursor/skills/paper-to-slides/scripts/create_pptx.py \
+    plan.json output.pptx paper.pdf
+```
+
+Produces a 16:9 PPTX with:
+- Dark navy header + white title
+- Bullet list in the content area
+- Figures extracted from the PDF embedded on the right
+- Full narration stored in slide Notes
+
+### Step 3 — Generate the narrated video
+
+```bash
+./run.sh output.pptx --engine kokoro --voice bm_george
+```
+
+---
+
+## How slides are rendered
+
+When you pass any supported file to `./run.sh`, the pipeline:
+
+1. **Parses** the file into a list of `SlideSpec` objects:
+   - `.pptx` — title from shape named `slide_title`; bullets from body text boxes;
+     narration from presenter Notes; figures from picture shapes
+   - `.pdf` — title from first line per page; body from remaining text;
+     figures from embedded images
+   - `.yaml` — structured `title`, `bullets`, `narration`, `right_bullets` fields
+   - `.tsx` — parses `SlideSpec(...)` call arguments with regex
+
+2. **Renders** each slide to a 1280×720 PNG (Pillow):
+   - Light background, dark navy accent, blue progress bar
+   - Auto-scaling title and body fonts
+   - Two-column bullet layout for dense slides
+   - Images composited into the right panel
+
+3. **Generates narration audio** per slide (Kokoro or pyttsx3)
+
+4. **Assembles** images + audio into an MP4 via ffmpeg (`imageio-ffmpeg`)
+
+---
+
+## Voices
+
+```bash
+# List all available voices
+./run.sh list-voices --engine kokoro
+```
+
+**Male voices (Kokoro):**
+
+| ID | Name | Accent |
+|---|---|---|
+| `am_adam` | Adam | American |
+| `am_michael` | Michael | American |
+| `am_onyx` | Onyx | American |
+| `bm_george` | George | British |
+| `bm_daniel` | Daniel | British |
+
+**Female voices (Kokoro):**
+
+| ID | Name | Accent |
+|---|---|---|
+| `af_heart` | Heart | American |
+| `af_sarah` | Sarah | American |
+| `bf_emma` | Emma | British |
+
+Preview any voice:
+
+```bash
+./run.sh speak "Well-written papers are read, remembered, cited." \
+    --engine kokoro --voice bm_george
+```
+
+---
+
+## Other commands
+
+```bash
+# Speak text aloud
+./run.sh speak "Hello world" --engine kokoro
+
+# Speak a text file
+./run.sh speak-file notes.txt --engine kokoro
+
+# Generate per-slide MP3 narrations (no video)
+./run.sh canvas-mp3 slides.pptx --engine kokoro --combined all.mp3
+
+# List available Kokoro voices
+./run.sh list-voices --engine kokoro
+```
 
 ---
 
@@ -12,147 +170,68 @@ A fully **offline** text-to-speech CLI powered by:
 | Requirement | Notes |
 |---|---|
 | Python ≥ 3.10 | |
-| [uv](https://docs.astral.sh/uv/) | Fast Python package manager |
-| [Ollama](https://ollama.ai) running locally | `ollama serve` |
-| `espeak-ng` | System TTS engine on Linux |
+| [uv](https://docs.astral.sh/uv/) | Fast package manager |
+| `espeak-ng` | Fallback TTS on Linux |
 
-Install `espeak-ng` if not already present:
+Install `espeak-ng` if needed:
 
 ```bash
-# Debian / Ubuntu
-sudo apt install espeak-ng
+sudo apt install espeak-ng        # Debian/Ubuntu
+sudo dnf install espeak-ng        # Fedora/RHEL
+sudo pacman -S espeak-ng          # Arch
+```
 
-# Fedora / RHEL
-sudo dnf install espeak-ng
+The first run of `./run.sh` bootstraps the virtual environment automatically
+and downloads Kokoro model weights (~300 MB) on first use.
 
-# Arch
-sudo pacman -S espeak-ng
+---
+
+## Project layout
+
+```
+text2speech/
+├── run.sh                          # Main entry point
+├── src/text2speech/
+│   ├── cli.py                      # typer CLI (canvas-video, canvas-mp3, speak, …)
+│   ├── canvas_video.py             # Slide renderer + video assembler
+│   ├── slides.py                   # PPTX / PDF reader → Slide objects
+│   └── tts.py                      # TTS engine abstraction
+├── .cursor/skills/paper-to-slides/ # paper-to-slides Cursor skill
+│   ├── SKILL.md
+│   └── scripts/create_pptx.py      # Styled PPTX builder
+└── ashby-how-to-write-paper.yaml   # Example slide deck (YAML format)
 ```
 
 ---
 
-## Installation
+## YAML slide format
+
+You can author slides in YAML and pass them directly to `./run.sh`:
+
+```yaml
+- index: 1
+  title: "My Talk Title"
+  tag: "OVERVIEW"
+  bullets:
+    - "Key point one"
+    - "Key point two"
+    - "  Sub-point (indent with 2 spaces)"
+  narration: >
+    This is the full spoken narration for the slide.
+    It can be several sentences long.
+
+- index: 2
+  title: "Second Slide"
+  tag: "SECTION 1"
+  bullets:
+    - "Another point"
+  right_bullets:
+    - "Right column point"
+  narration: "Narration for slide two."
+```
 
 ```bash
-# Clone / enter the project directory
-cd text2speech
-
-# Install with uv (creates .venv and installs all deps)
-uv sync
-
-# Run directly
-uv run t2s --help
-
-# Or install into the uv-managed venv and use the script
-uv pip install -e .
-t2s --help
-```
-
----
-
-## Usage
-
-### List locally available Ollama models
-
-```bash
-uv run t2s list-models
-```
-
-### List available TTS voices
-
-```bash
-uv run t2s list-voices
-```
-
-### Speak text directly
-
-```bash
-# Simple speech
-uv run t2s speak "Hello, this is a text to speech demo."
-
-# Adjust speed and volume
-uv run t2s speak "Faster speech example." --rate 220 --volume 0.9
-
-# Use a specific TTS voice (by index from list-voices)
-uv run t2s speak "Hello!" --voice 2
-
-# Save audio to a WAV file instead of playing
-uv run t2s speak "Save me to disk." --save output.wav
-```
-
-### Pre-process text with Ollama before speaking
-
-Ollama cleans up abbreviations, markdown, symbols, and awkward phrasing for natural speech:
-
-```bash
-# Auto-selects model interactively
-uv run t2s speak "The CEO earned $2.5M in FY24." --process
-
-# Specify a model
-uv run t2s speak "Dr. Smith's report: ~40% increase YoY." --process --model llama3.2
-```
-
-### Summarize long text with Ollama before speaking
-
-```bash
-echo "Very long article text..." | uv run t2s speak --summarize --model mistral
-```
-
-### Speak a file
-
-```bash
-# Read a file aloud
-uv run t2s speak-file document.txt
-
-# Summarize with Ollama first, then speak
-uv run t2s speak-file article.txt --summarize --model llama3.2
-
-# Save the audio
-uv run t2s speak-file notes.md --process --model llama3.2 --save notes.wav
-```
-
-### Interactive chat mode (AI responses spoken aloud)
-
-Chat with any Ollama model and hear every response:
-
-```bash
-uv run t2s interactive --model llama3.2
-
-# Save each reply as a WAV file
-uv run t2s interactive --model mistral --save-dir ./session_audio
-```
-
-### Show TTS engine config
-
-```bash
-uv run t2s config
-```
-
----
-
-## Stdin / pipe support
-
-```bash
-cat README.md | uv run t2s speak --summarize --model llama3.2
-curl -s https://example.com | uv run t2s speak
-```
-
----
-
-## How it works
-
-```
-Text Input
-    │
-    ▼
-[Optional] Ollama LLM
-    ├── --process   → clean up abbreviations, markdown, symbols
-    └── --summarize → condense to a natural spoken summary
-    │
-    ▼
-pyttsx3 TTS Engine (espeak-ng backend)
-    ├── Play audio directly
-    └── Save to WAV file
+./run.sh my-talk.yaml --engine kokoro
 ```
 
 ---
