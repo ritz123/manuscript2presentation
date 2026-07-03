@@ -10,82 +10,62 @@ synchronized voice-over, rendered slides, and embedded figures.
 ## Quick start
 
 ```bash
-# Generate a narrated MP4 from a PowerPoint (auto-timestamped output)
-./run.sh slides.pptx
+# ── Existing slide deck (PPTX / YAML / TSX) → narrated MP4 ──────────────────
+./run.sh slides.pptx --slide
+./run.sh slides.pptx --slide --engine kokoro --voice bm_george
+./run.sh slides.pptx --slide --slides 1-5
+./run.sh slides.pptx --slide --output ~/Desktop/talk.mp4
 
-# Use the high-quality neural Kokoro voice
+# --slide is the default for .pptx / .yaml / .tsx (can be omitted)
 ./run.sh slides.pptx --engine kokoro
 
-# Choose a specific voice (male British, great for academic content)
-./run.sh slides.pptx --engine kokoro --voice bm_george
-
-# Render only a range of slides
-./run.sh slides.pptx --engine kokoro --slides 1-5
-
-# Save to a specific path
-./run.sh slides.pptx --engine kokoro --output ~/Desktop/talk.mp4
+# ── PDF manuscript → LLM → styled slides → narrated MP4 ─────────────────────
+./run.sh paper.pdf --paper
+./run.sh paper.pdf --paper --model llama3.2 --n-slides 10
+./run.sh paper.pdf --paper --engine kokoro --voice bm_george
+./run.sh paper.pdf --paper --video        # also renders MP4 in one shot
 ```
 
-**Accepted input formats:** `.pptx` · `.pdf` · `.yaml` · `.tsx`
+> **PDF requires an explicit flag** — `--paper` for prose documents, `--slide`
+> for slide-per-page PDFs — so the right pipeline is always chosen.
 
 Output goes to `output/<timestamp>_<name>.mp4` by default.
 
 ---
 
-## PDF → PPTX → Video (paper-to-slides skill)
+## PDF manuscript → narrated video (automated)
 
-The project includes a **`paper-to-slides`** skill that turns any research PDF
-into a styled PPTX and then into a narrated video in three steps.
-
-### Step 1 — Extract PDF text and generate a slide plan
-
-```python
-import pypdf, json
-
-reader    = pypdf.PdfReader("paper.pdf")
-full_text = "\n\n--- PAGE BREAK ---\n\n".join(
-    p.extract_text() or "" for p in reader.pages
-)
-```
-
-Feed `full_text` to an LLM with this prompt (adjust slide count to taste):
+The `--paper` flag runs the full pipeline end-to-end with one command:
 
 ```
-You are a presentation designer. Read the document below and produce a slide
-plan as a JSON array.
-
-Rules:
-- 8-14 slides total (first = title/overview, last = conclusions/takeaways)
-- "title": short slide title (<= 8 words)
-- "bullets": 4-6 concise on-slide points (<= 12 words each, no full sentences)
-- "narration": 3-5 full spoken sentences expanding on the bullets
-- "image_page": (optional integer) PDF page number with the best figure
-- Output ONLY valid JSON, no prose
-
-Document:
-<full_text here>
+paper.pdf ──► extract text ──► Ollama LLM ──► slide plan
+           ──► styled PPTX (bullets + figures + narration in Notes)
+           ──► narrated MP4
 ```
-
-Save the response as `plan.json`.
-
-### Step 2 — Build the styled PPTX
 
 ```bash
-python .cursor/skills/paper-to-slides/scripts/create_pptx.py \
-    plan.json output.pptx paper.pdf
+# Minimum — uses llama3.2, 12 slides, kokoro voice
+./run.sh paper.pdf --paper
+
+# Customise the LLM model and slide count
+./run.sh paper.pdf --paper --model mistral --n-slides 14
+
+# Produce both PPTX and MP4 in one shot
+./run.sh paper.pdf --paper --video --engine kokoro --voice bm_george
 ```
 
-Produces a 16:9 PPTX with:
-- Dark navy header + white title
-- Bullet list in the content area
-- Figures extracted from the PDF embedded on the right
-- Full narration stored in slide Notes
+Ollama must be running locally (`ollama serve`) with a model pulled
+(`ollama pull llama3.2`).  The PPTX is saved next to the PDF; the MP4
+goes to `output/`.
 
-### Step 3 — Generate the narrated video
+### What the LLM produces per slide
 
-```bash
-./run.sh output.pptx --engine kokoro --voice bm_george
-```
+| Field | On-slide | In video |
+|---|---|---|
+| `title` | Slide header | — |
+| `bullets` | Concise key points | Visible on screen |
+| `narration` | Stored in Notes | Spoken as voice-over |
+| `image_page` | Figure from that PDF page | Visible on screen |
 
 ---
 

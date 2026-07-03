@@ -10,7 +10,33 @@ Turns a PDF document into a PPTX presentation where:
 - **Notes** — full narration sentences (what a speaker says / voice-over)
 - **Images** — key figures extracted from the PDF, embedded per slide
 
-## Workflow
+---
+
+## Automated workflow (preferred)
+
+The pipeline is fully automated via `run.sh`:
+
+```bash
+# PDF → styled PPTX (saved next to the PDF)
+./run.sh paper.pdf --paper
+
+# Also render a narrated MP4 in one shot
+./run.sh paper.pdf --paper --video --engine kokoro --voice bm_george
+
+# Customise the Ollama model and slide count
+./run.sh paper.pdf --paper --model mistral --n-slides 14
+```
+
+Or call the CLI command directly:
+
+```bash
+t2s paper-to-slides paper.pdf
+t2s paper-to-slides paper.pdf --model llama3.2 --n-slides 10 --video --voice bm_george
+```
+
+---
+
+## Manual workflow (fallback — no Ollama, or for custom plans)
 
 ### Step 1 — Extract PDF text
 
@@ -32,6 +58,7 @@ You are a presentation designer. Read the document below and produce a slide pla
 Rules:
 - 8-14 slides total (first = title/overview, last = conclusions/takeaways)
 - "title": short slide title (<= 8 words)
+- "tag": optional short section label in ALL CAPS (e.g. "OVERVIEW", "METHOD")
 - "bullets": 4-6 concise on-slide points (<= 12 words each, no full sentences)
 - "narration": 3-5 full spoken sentences expanding on the bullets
 - "image_page": (optional integer) the PDF page number whose figure best illustrates this slide; omit if none
@@ -52,12 +79,11 @@ python .cursor/skills/paper-to-slides/scripts/create_pptx.py \
 
 `paper.pdf` is optional — include it to embed extracted figures.
 
-### Step 4 — Verify and offer next step
+### Step 4 — Generate the narrated video
 
-Open or inspect `output.pptx`. Tell the user:
-
-> PPTX created: `output.pptx`
-> To generate a narrated video: `./run.sh output.pptx --engine kokoro`
+```bash
+./run.sh output.pptx --slide --engine kokoro --voice bm_george
+```
 
 ---
 
@@ -67,6 +93,7 @@ Open or inspect `output.pptx`. Tell the user:
 [
   {
     "title":      "Overview of the Method",
+    "tag":        "METHOD",
     "bullets":    ["Key idea A", "Key idea B", "Constraint C"],
     "narration":  "In this slide we introduce the core method. The key idea A addresses...",
     "image_page": 4
@@ -74,26 +101,27 @@ Open or inspect `output.pptx`. Tell the user:
 ]
 ```
 
-`image_page` pulls the largest image from that PDF page. Omit the field if the slide needs no figure.
+`image_page` pulls the largest image from that PDF page. Omit if the slide needs no figure.
 
 ---
 
 ## Dependencies
 
-Required (already in the text2speech venv):
+Required (already in the manuscript2presentation venv):
 - `pypdf` — PDF text + image extraction
 - `python-pptx` — PPTX generation
 - `pillow` — image conversion
+- `ollama` — local LLM client (for automated workflow)
 
 Install if missing:
 ```bash
-uv pip install pypdf python-pptx pillow
+uv pip install pypdf python-pptx pillow ollama
 ```
 
 ---
 
 ## Tips
 
-- **Dense papers**: ask the LLM to focus only on contributions, method, and results — skip background that experts already know.
-- **Multiple figures**: set `image_page` on different slides to spread figures across the deck.
-- **After PPTX is generated**: the user can edit it in PowerPoint/LibreOffice, then run `./run.sh` to re-render the video.
+- **Dense papers**: tell the LLM to focus only on contributions, method, and results.
+- **Multiple figures**: assign different `image_page` values across slides to spread figures through the deck.
+- **Edit then re-render**: open the PPTX in PowerPoint/LibreOffice, tweak it, then run `./run.sh output.pptx --slide` to re-render the video.
