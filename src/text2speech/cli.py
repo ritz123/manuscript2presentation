@@ -795,7 +795,7 @@ def paper_to_slides(
     model: Annotated[str, typer.Option("--model", "-m", help="Ollama model for slide planning")] = "llama3.2",
     n_slides: Annotated[int, typer.Option("--n-slides", help="Target number of slides (8-14)")] = 12,
     output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output PPTX path")] = None,
-    video: Annotated[bool, typer.Option("--video/--no-video", help="Also render a narrated MP4")] = False,
+    video: Annotated[bool, typer.Option("--video/--no-video", help="Render a narrated MP4 (default: on)")] = True,
     engine: Annotated[str, typer.Option("--engine", help="TTS engine for video: kokoro or pyttsx3")] = "kokoro",
     voice: Annotated[Optional[str], typer.Option("--voice", help="TTS voice ID")] = None,
 ) -> None:

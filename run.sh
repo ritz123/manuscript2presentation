@@ -41,13 +41,14 @@ if [[ "$COMMAND" == "--help" || "$COMMAND" == "-h" || -z "$COMMAND" ]]; then
 Usage: ./run.sh <input> --paper|--slide [OPTIONS]
        ./run.sh COMMAND [ARGS...]
 
-─── --paper  (PDF manuscript → LLM → slides → MP4) ────────────────────────────
-  Uses a local Ollama LLM to intelligently plan slide content from the
-  document, builds a styled PPTX, and optionally renders a narrated video.
+─── --paper  (PDF manuscript → LLM → PPTX → MP4) ──────────────────────────────
+  Uses a local Ollama LLM to plan slides, builds a styled PPTX, and renders
+  a narrated MP4 — all in one shot.
 
   ./run.sh paper.pdf --paper
   ./run.sh paper.pdf --paper --model llama3.2 --n-slides 10
-  ./run.sh paper.pdf --paper --video --engine kokoro --voice bm_george
+  ./run.sh paper.pdf --paper --engine kokoro --voice bm_george
+  ./run.sh paper.pdf --paper --no-video   # PPTX only, skip video
 
 ─── --slide  (existing slide deck → MP4) ───────────────────────────────────────
   Renders a slide deck directly — one slide at a time — with voice-over.

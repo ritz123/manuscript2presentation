@@ -23,7 +23,7 @@ synchronized voice-over, rendered slides, and embedded figures.
 ./run.sh paper.pdf --paper
 ./run.sh paper.pdf --paper --model llama3.2 --n-slides 10
 ./run.sh paper.pdf --paper --engine kokoro --voice bm_george
-./run.sh paper.pdf --paper --video        # also renders MP4 in one shot
+./run.sh paper.pdf --paper --no-video     # PPTX only, skip video
 ```
 
 > **PDF requires an explicit flag** — `--paper` for prose documents, `--slide`
@@ -44,14 +44,15 @@ paper.pdf ──► extract text ──► Ollama LLM ──► slide plan
 ```
 
 ```bash
-# Minimum — uses llama3.2, 12 slides, kokoro voice
+# Full pipeline in one command (PPTX + MP4 by default)
 ./run.sh paper.pdf --paper
 
-# Customise the LLM model and slide count
+# Customise LLM model, slide count, and voice
 ./run.sh paper.pdf --paper --model mistral --n-slides 14
+./run.sh paper.pdf --paper --engine kokoro --voice bm_george
 
-# Produce both PPTX and MP4 in one shot
-./run.sh paper.pdf --paper --video --engine kokoro --voice bm_george
+# PPTX only — skip video rendering
+./run.sh paper.pdf --paper --no-video
 ```
 
 Ollama must be running locally (`ollama serve`) with a model pulled
