@@ -401,6 +401,370 @@ def config(
     console.print(table)
 
 
+@app.command("speak-slides")
+def speak_slides(
+    file: Annotated[Path, typer.Argument(help="Path to .pptx or .pdf slide file.")],
+    engine: _ENGINE_OPT = EngineChoice.auto,
+    voice: Annotated[Optional[str], typer.Option("--voice", help="Voice ID (see list-voices).")] = None,
+    rate: Annotated[int, typer.Option("--rate", "-r", help="Speech rate.", min=50, max=600)] = 175,
+    volume: Annotated[float, typer.Option("--volume", "-v", help="Volume level (0.0–1.0).", min=0.0, max=1.0)] = 1.0,
+    include_notes: Annotated[bool, typer.Option("--notes/--no-notes", help="Also speak presenter notes.")] = False,
+    model: Annotated[Optional[str], typer.Option("--model", "-m", help="Ollama model to summarize each slide before speaking.")] = None,
+    summarize: Annotated[bool, typer.Option("--summarize/--no-summarize", help="Summarize each slide with Ollama before speaking.")] = False,
+    slide_range: Annotated[Optional[str], typer.Option("--slides", "-s", help="Slide range to read, e.g. 1-5 or 2,4,7.")] = None,
+    save_dir: Annotated[Optional[Path], typer.Option("--save-dir", help="Save each slide's audio as a separate WAV file.")] = None,
+    pause: Annotated[bool, typer.Option("--pause/--no-pause", help="Pause for keypress between slides.")] = False,
+) -> None:
+    """
+    Read a presentation aloud, slide by slide.
+
+    Supports [bold].pptx[/] (PowerPoint) and [bold].pdf[/] files.
+    Each slide's title and body text are spoken in order.
+
+    [bold]Examples:[/]
+
+      t2s speak-slides presentation.pptx
+
+      t2s speak-slides slides.pptx --voice bf_emma --slides 1-10
+
+      t2s speak-slides deck.pptx --summarize --model llama3.2
+
+      t2s speak-slides report.pdf --notes --save-dir ./audio
+    """
+    from text2speech.slides import read_slides
+
+    if not file.exists():
+        _abort(f"File not found: {file}")
+
+    try:
+        all_slides = read_slides(file)
+    except (ValueError, RuntimeError) as e:
+        _abort(str(e))
+
+    if not all_slides:
+        _abort("No slides found in the file.")
+
+    # ── parse slide range ────────────────────────────────────────────────────
+    selected_indices: set[int] = set()
+    if slide_range:
+        for part in slide_range.split(","):
+            part = part.strip()
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                selected_indices.update(range(int(lo), int(hi) + 1))
+            else:
+                selected_indices.add(int(part))
+        slides = [s for s in all_slides if s.index in selected_indices]
+    else:
+        slides = all_slides
+
+    if not slides:
+        _abort(f"No slides matched the range '{slide_range}'.")
+
+    tts = _build_engine(engine, rate, volume, voice)
+
+    if save_dir:
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+    selected_model = _pick_model(model) if summarize else None
+
+    console.print(
+        Panel(
+            f"[bold]{file.name}[/]  —  {len(slides)} slide{'s' if len(slides) != 1 else ''}\n"
+            f"[dim]Engine: {_engine_label(tts)}  |  Notes: {'on' if include_notes else 'off'}  |  "
+            f"Summarize: {'on (' + (selected_model or '') + ')' if summarize else 'off'}[/]",
+            title="[bold cyan]Speaking Slides[/]",
+            border_style="cyan",
+        )
+    )
+
+    for slide in slides:
+        text = slide.spoken_text(include_notes=include_notes)
+        if not text.strip():
+            console.print(f"[dim]Slide {slide.index}: (empty — skipping)[/]")
+            continue
+
+        if summarize and selected_model:
+            with console.status(f"[cyan]Summarizing slide {slide.index}...[/]"):
+                try:
+                    text = ollama.summarize_for_speech(text, selected_model)
+                except RuntimeError as e:
+                    err_console.print(f"[yellow]Warning:[/] {e}")
+
+        console.print(
+            Panel(
+                Text(text[:400] + ("…" if len(text) > 400 else ""), style="white"),
+                title=f"[bold cyan]Slide {slide.index}:[/] {slide.display_title()}",
+                border_style="cyan",
+                subtitle=f"[dim]{len(text)} chars[/]",
+            )
+        )
+
+        if save_dir:
+            wav = save_dir / f"slide_{slide.index:03d}.wav"
+            tts.save_to_file(text, wav)
+            console.print(f"[dim]  Saved → {wav}[/]")
+
+        tts.speak(text)
+
+        if pause and slide.index != slides[-1].index:
+            try:
+                Prompt.ask("[dim]  Press Enter for next slide[/]")
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[dim]Stopped.[/]")
+                break
+
+    console.print("[bold green]Done.[/]")
+
+
+@app.command("canvas-video")
+def canvas_video(
+    tsx_file: Annotated[Path, typer.Argument(help="Path to the *.canvas.tsx presentation file.")],
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output MP4 path (default: <stem>.mp4 next to the TSX file).")] = None,
+    engine: _ENGINE_OPT = EngineChoice.auto,
+    voice: Annotated[Optional[str], typer.Option("--voice", help="Voice ID (see list-voices).")] = None,
+    rate: Annotated[int, typer.Option("--rate", "-r", help="Speech rate.", min=50, max=600)] = 160,
+    volume: Annotated[float, typer.Option("--volume", "-v", help="Volume level (0.0–1.0).", min=0.0, max=1.0)] = 1.0,
+    slide_range: Annotated[Optional[str], typer.Option("--slides", "-s", help="Slides to include, e.g. 1-5 or 1,3,5.")] = None,
+    work_dir: Annotated[Optional[Path], typer.Option("--work-dir", help="Keep intermediate PNGs and WAVs here (default: temp dir).")] = None,
+    fps: Annotated[int, typer.Option("--fps", help="Video frame rate.", min=1, max=60)] = 25,
+    tail: Annotated[float, typer.Option("--tail", help="Seconds of silence after each slide.", min=0.0, max=10.0)] = 1.5,
+) -> None:
+    """
+    Generate a narrated MP4 video from a [bold]*.canvas.tsx[/bold] presentation.
+
+    The output MP4 is saved next to the TSX file (or to [bold]--output[/bold]).
+
+    [bold]Examples:[/]
+
+      t2s canvas-video slides.canvas.tsx
+
+      t2s canvas-video slides.canvas.tsx --engine kokoro --voice bf_emma
+
+      t2s canvas-video slides.canvas.tsx --output my_video.mp4 --slides 1-5
+    """
+    import tempfile, shutil
+    from text2speech.canvas_video import slides_from_tsx, generate_audio, render_slide, assemble_video
+
+    if not tsx_file.exists():
+        _abort(f"File not found: {tsx_file}")
+
+    all_slides = slides_from_tsx(tsx_file)
+    if not all_slides:
+        _abort("No slides found in the canvas file.")
+
+    stem = tsx_file.stem.replace(".canvas", "")
+    _output = output or (tsx_file.parent / f"{stem}.mp4")
+
+    # ── filter slides ────────────────────────────────────────────────────────
+    if slide_range:
+        wanted: set[int] = set()
+        for part in slide_range.split(","):
+            part = part.strip()
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                wanted.update(range(int(lo), int(hi) + 1))
+            else:
+                wanted.add(int(part))
+        selected = [s for s in all_slides if s.index in wanted]
+    else:
+        selected = all_slides
+
+    if not selected:
+        _abort(f"No slides matched the range '{slide_range}'.")
+
+    tts = _build_engine(engine, rate, volume, voice)
+
+    console.print(
+        Panel(
+            f"[bold]{len(selected)} slide{'s' if len(selected) != 1 else ''}[/] → [cyan]{_output}[/]\n"
+            f"[dim]Engine: {_engine_label(tts)}  |  {W}×{H} @ {fps} fps  |  tail: {tail}s[/]",
+            title="[bold cyan]Canvas Video[/]",
+            border_style="cyan",
+        )
+    )
+
+    use_tmp = work_dir is None
+    _work = Path(tempfile.mkdtemp(prefix="t2s_canvas_")) if use_tmp else work_dir
+    _work.mkdir(parents=True, exist_ok=True)
+
+    img_dir = _work / "images"
+    aud_dir = _work / "audio"
+    img_dir.mkdir(exist_ok=True)
+    aud_dir.mkdir(exist_ok=True)
+
+    try:
+        # ── render images ────────────────────────────────────────────────────
+        console.print("[bold]Rendering slide images…[/]")
+        for spec in selected:
+            img_path = img_dir / f"slide_{spec.index:02d}.png"
+            with console.status(f"  Slide {spec.index}: {spec.title[:50]}…"):
+                render_slide(spec, img_path)
+            console.print(f"  [green]✓[/] Slide {spec.index} → {img_path.name}")
+
+        # ── generate audio ───────────────────────────────────────────────────
+        console.print("\n[bold]Generating narration audio…[/]")
+        for spec in selected:
+            aud_path = aud_dir / f"slide_{spec.index:02d}.wav"
+            with console.status(f"  Slide {spec.index}: narrating…"):
+                generate_audio(spec, aud_path, tts)
+            console.print(f"  [green]✓[/] Slide {spec.index} → {aud_path.name}")
+
+        # ── assemble video ───────────────────────────────────────────────────
+        console.print("\n[bold]Assembling video…[/]")
+        with console.status("[cyan]Running ffmpeg…[/]"):
+            assemble_video(
+                selected, img_dir, aud_dir, _output,
+                fps=fps, tail_seconds=tail,
+            )
+
+        size_mb = _output.stat().st_size / 1_048_576
+        console.print(
+            Panel(
+                f"[bold green]Video saved:[/] {_output}\n"
+                f"[dim]{len(selected)} slides · {size_mb:.1f} MB[/]",
+                border_style="green",
+            )
+        )
+
+        if not use_tmp:
+            console.print(f"[dim]Intermediate files kept in: {_work}[/]")
+
+    finally:
+        if use_tmp and _work.exists():
+            shutil.rmtree(_work, ignore_errors=True)
+
+
+W, H = 1280, 720   # exposed so the status Panel can reference it
+
+
+@app.command("canvas-mp3")
+def canvas_mp3(
+    tsx_file: Annotated[Path, typer.Argument(help="Path to the *.canvas.tsx presentation file.")],
+    out_dir: Annotated[Optional[Path], typer.Option("--out-dir", "-d", help="Directory for per-slide MP3s (default: <stem>_mp3/).")] = None,
+    combined: Annotated[Optional[Path], typer.Option("--combined", "-o", help="Also write a single combined MP3 to this path.")] = None,
+    engine: _ENGINE_OPT = EngineChoice.auto,
+    voice: Annotated[Optional[str], typer.Option("--voice", help="Voice ID (see list-voices).")] = None,
+    rate: Annotated[int, typer.Option("--rate", "-r", help="Speech rate.", min=50, max=600)] = 160,
+    volume: Annotated[float, typer.Option("--volume", "-v", help="Volume level (0.0–1.0).", min=0.0, max=1.0)] = 1.0,
+    slide_range: Annotated[Optional[str], typer.Option("--slides", "-s", help="Slides to include, e.g. 1-5 or 1,3,5.")] = None,
+    bitrate: Annotated[str, typer.Option("--bitrate", "-b", help="MP3 bitrate (e.g. 128k, 192k, 320k).")] = "192k",
+) -> None:
+    """
+    Generate per-slide MP3 narrations from a [bold]*.canvas.tsx[/bold] presentation.
+
+    Reads the canvas file to discover slides, then produces one MP3 per slide
+    plus an optional single combined MP3 that plays straight through.
+
+    [bold]Examples:[/]
+
+      t2s canvas-mp3 ashby-how-to-write-paper.canvas.tsx
+
+      t2s canvas-mp3 slides.canvas.tsx --out-dir ./mp3s --combined all.mp3
+
+      t2s canvas-mp3 slides.canvas.tsx --engine kokoro --voice bf_emma --slides 1-5
+
+      t2s canvas-mp3 slides.canvas.tsx --bitrate 320k --rate 140
+    """
+    import tempfile
+    from text2speech.canvas_video import (
+        slides_from_tsx, generate_audio, wav_to_mp3, concat_mp3s,
+    )
+
+    if not tsx_file.exists():
+        _abort(f"File not found: {tsx_file}")
+    if not tsx_file.suffix == ".tsx":
+        _abort(f"Expected a *.tsx file, got: {tsx_file}")
+
+    # ── discover slides ──────────────────────────────────────────────────────
+    all_slides = slides_from_tsx(tsx_file)
+    if not all_slides:
+        _abort("No slides found in the canvas file.")
+
+    # ── filter by range ──────────────────────────────────────────────────────
+    if slide_range:
+        wanted: set[int] = set()
+        for part in slide_range.split(","):
+            part = part.strip()
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                wanted.update(range(int(lo), int(hi) + 1))
+            else:
+                wanted.add(int(part))
+        selected = [s for s in all_slides if s.index in wanted]
+    else:
+        selected = all_slides
+
+    if not selected:
+        _abort(f"No slides matched the range '{slide_range}'.")
+
+    tts = _build_engine(engine, rate, volume, voice)
+
+    # ── output directory ─────────────────────────────────────────────────────
+    stem = tsx_file.stem.replace(".canvas", "")
+    _out_dir = out_dir or (tsx_file.parent / f"{stem}_mp3")
+    _out_dir.mkdir(parents=True, exist_ok=True)
+
+    console.print(
+        Panel(
+            f"[bold]{tsx_file.name}[/]  →  [cyan]{_out_dir}/[/]\n"
+            f"[dim]{len(selected)} slide{'s' if len(selected) != 1 else ''}  |  "
+            f"Engine: {_engine_label(tts)}  |  Bitrate: {bitrate}[/]",
+            title="[bold cyan]Canvas MP3[/]",
+            border_style="cyan",
+        )
+    )
+
+    mp3_files: list[Path] = []
+
+    with tempfile.TemporaryDirectory(prefix="t2s_mp3_") as tmp:
+        tmp_path = Path(tmp)
+
+        for spec in selected:
+            # 1. generate WAV narration
+            wav_path = tmp_path / f"slide_{spec.index:02d}.wav"
+            mp3_path = _out_dir / f"slide_{spec.index:02d}_{_slug(spec.title)}.mp3"
+
+            with console.status(f"  [cyan]Slide {spec.index}:[/] generating narration…"):
+                generate_audio(spec, wav_path, tts)
+
+            # 2. convert WAV → MP3
+            with console.status(f"  [cyan]Slide {spec.index}:[/] encoding MP3…"):
+                wav_to_mp3(wav_path, mp3_path, bitrate=bitrate)
+
+            mp3_files.append(mp3_path)
+            size_kb = mp3_path.stat().st_size // 1024
+            console.print(
+                f"  [green]✓[/] Slide {spec.index:>2}  "
+                f"[dim]{spec.title[:48]}[/]  "
+                f"[dim]{size_kb} KB[/] → {mp3_path.name}"
+            )
+
+    # ── combined MP3 ─────────────────────────────────────────────────────────
+    if combined or len(mp3_files) > 1:
+        _combined = combined or (_out_dir / f"{stem}_combined.mp3")
+        with console.status(f"[cyan]Concatenating {len(mp3_files)} MP3s…[/]"):
+            concat_mp3s(mp3_files, _combined)
+        size_mb = _combined.stat().st_size / 1_048_576
+        console.print(f"\n[bold green]Combined MP3:[/] {_combined}  [dim]({size_mb:.1f} MB)[/]")
+
+    total_kb = sum(p.stat().st_size for p in mp3_files) // 1024
+    console.print(
+        Panel(
+            f"[bold green]{len(mp3_files)} MP3 file{'s' if len(mp3_files) != 1 else ''}[/] "
+            f"saved to [cyan]{_out_dir}/[/]\n"
+            f"[dim]Total: {total_kb} KB[/]",
+            border_style="green",
+        )
+    )
+
+
+def _slug(text: str) -> str:
+    """Convert a title to a safe filename slug."""
+    import re
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")[:40]
+
+
 @app.command("download-models")
 def download_models() -> None:
     """
