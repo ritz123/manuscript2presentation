@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage:
-#   ./run.sh <slides.pptx> [OPTIONS]          → narrated MP4 (from existing slides)
-#   ./run.sh <paper.pdf> --plan [OPTIONS]      → PDF → LLM → PPTX → MP4
+#   ./run.sh <input> --paper [OPTIONS]   → PDF manuscript → LLM → PPTX → MP4
+#   ./run.sh <input> --slide [OPTIONS]   → slide deck (PPTX/PDF/YAML/TSX) → MP4
 #   ./run.sh speak "Hello world"
 #   ./run.sh list-voices --engine kokoro
 
@@ -38,25 +38,28 @@ _has_flag() {
 # ── help ──────────────────────────────────────────────────────────────────────
 if [[ "$COMMAND" == "--help" || "$COMMAND" == "-h" || -z "$COMMAND" ]]; then
     cat <<'EOF'
-Usage: ./run.sh <input> [OPTIONS]
+Usage: ./run.sh <input> --paper|--slide [OPTIONS]
        ./run.sh COMMAND [ARGS...]
 
-─── Narrated video from a slide deck ──────────────────────────────────────────
-  ./run.sh slides.pptx
-      → output/<timestamp>_slides.mp4  (auto-timestamped)
+─── --paper  (PDF manuscript → LLM → slides → MP4) ────────────────────────────
+  Uses a local Ollama LLM to intelligently plan slide content from the
+  document, builds a styled PPTX, and optionally renders a narrated video.
 
-  ./run.sh slides.pptx --engine kokoro --voice bm_george
-  ./run.sh slides.pptx --slides 1-5
-  ./run.sh slides.pptx --output ~/Desktop/talk.mp4
+  ./run.sh paper.pdf --paper
+  ./run.sh paper.pdf --paper --model llama3.2 --n-slides 10
+  ./run.sh paper.pdf --paper --video --engine kokoro --voice bm_george
 
-  Same syntax works for:  .pdf  .yaml  .tsx
+─── --slide  (existing slide deck → MP4) ───────────────────────────────────────
+  Renders a slide deck directly — one slide at a time — with voice-over.
+  Accepted formats: .pptx  .pdf  .yaml  .tsx
 
-─── PDF manuscript → slides → video (full automation) ─────────────────────────
-  ./run.sh paper.pdf --plan
-      Uses Ollama LLM to plan slides, builds a styled PPTX, renders MP4.
+  ./run.sh slides.pptx --slide
+  ./run.sh slides.pptx --slide --engine kokoro --voice bm_george
+  ./run.sh slides.pptx --slide --slides 1-5
+  ./run.sh slides.pptx --slide --output ~/Desktop/talk.mp4
 
-  ./run.sh paper.pdf --plan --model llama3.2 --n-slides 10
-  ./run.sh paper.pdf --plan --engine kokoro --voice bm_george --video
+  Note: --slide is the default for .pptx, .yaml, and .tsx files.
+        For .pdf, use --paper or --slide explicitly.
 
 ─── Other commands ─────────────────────────────────────────────────────────────
   ./run.sh speak "Hello world"
@@ -67,18 +70,29 @@ EOF
     exit 0
 fi
 
-# ── PDF + --plan → full LLM pipeline ─────────────────────────────────────────
-if [[ "$COMMAND" == *.pdf ]] && _has_flag "--plan" "$@"; then
-    # Strip --plan from args before passing to paper-to-slides
+# ── --paper → full LLM pipeline (manuscript → slides → video) ────────────────
+if _has_flag "--paper" "$@"; then
     ARGS=()
-    for arg in "${@:2}"; do [[ "$arg" != "--plan" ]] && ARGS+=("$arg"); done
-    exec "$T2S" paper-to-slides "$COMMAND" "${ARGS[@]}"
+    for arg in "$@"; do [[ "$arg" != "--paper" ]] && ARGS+=("$arg"); done
+    exec "$T2S" paper-to-slides "${ARGS[@]}"
 fi
 
 # ── slide decks → narrated MP4 ───────────────────────────────────────────────
-if [[ "$COMMAND" == *.yaml || "$COMMAND" == *.yml || "$COMMAND" == *.tsx || \
-      "$COMMAND" == *.pptx || "$COMMAND" == *.pdf ]]; then
-    if ! _has_flag "--output" "$@" && ! _has_flag "-o" "$@"; then
+# --slide is explicit; also implicit for .pptx / .yaml / .tsx
+# For .pdf with no flag, require --slide to avoid ambiguity.
+IS_SLIDE_DECK=false
+if _has_flag "--slide" "$@"; then
+    IS_SLIDE_DECK=true
+elif [[ "$COMMAND" == *.yaml || "$COMMAND" == *.yml || \
+        "$COMMAND" == *.tsx  || "$COMMAND" == *.pptx ]]; then
+    IS_SLIDE_DECK=true
+fi
+
+if [[ "$IS_SLIDE_DECK" == true ]]; then
+    # Strip --slide before forwarding
+    ARGS=()
+    for arg in "$@"; do [[ "$arg" != "--slide" ]] && ARGS+=("$arg"); done
+    if ! _has_flag "--output" "${ARGS[@]}" && ! _has_flag "-o" "${ARGS[@]}"; then
         mkdir -p "$OUTPUT_DIR"
         STEM="$(basename "$COMMAND")"
         STEM="${STEM%.canvas.tsx}"; STEM="${STEM%.tsx}"
@@ -86,9 +100,20 @@ if [[ "$COMMAND" == *.yaml || "$COMMAND" == *.yml || "$COMMAND" == *.tsx || \
         STEM="${STEM%.pptx}"; STEM="${STEM%.pdf}"
         AUTO_SAVE="$OUTPUT_DIR/${TIMESTAMP}_${STEM}.mp4"
         echo "Video → $AUTO_SAVE"
-        exec "$T2S" canvas-video "$@" --output "$AUTO_SAVE"
+        exec "$T2S" canvas-video "${ARGS[@]}" --output "$AUTO_SAVE"
     fi
-    exec "$T2S" canvas-video "$@"
+    exec "$T2S" canvas-video "${ARGS[@]}"
+fi
+
+# ── PDF without a mode flag → tell the user to be explicit ───────────────────
+if [[ "$COMMAND" == *.pdf ]]; then
+    echo "Error: PDF input requires --paper or --slide."
+    echo ""
+    echo "  --paper  Manuscript (prose document) → LLM plans the slides"
+    echo "  --slide  Already a slide-per-page PDF → render directly"
+    echo ""
+    echo "Run ./run.sh --help for full usage."
+    exit 1
 fi
 
 # ── other commands ────────────────────────────────────────────────────────────
