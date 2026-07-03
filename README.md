@@ -170,8 +170,9 @@ Preview any voice:
 | Requirement | Notes |
 |---|---|
 | Python ≥ 3.10 | |
-| [uv](https://docs.astral.sh/uv/) | Fast package manager |
-| `espeak-ng` | Fallback TTS on Linux |
+| [uv](https://docs.astral.sh/uv/) | Fast Python package manager |
+| `espeak-ng` | Fallback TTS engine on Linux |
+| [Ollama](https://ollama.ai) (optional) | Local LLM — only needed for `paper-to-slides` slide planning |
 
 Install `espeak-ng` if needed:
 
@@ -181,8 +182,49 @@ sudo dnf install espeak-ng        # Fedora/RHEL
 sudo pacman -S espeak-ng          # Arch
 ```
 
-The first run of `./run.sh` bootstraps the virtual environment automatically
-and downloads Kokoro model weights (~300 MB) on first use.
+The first run of `./run.sh` bootstraps the virtual environment automatically.
+Kokoro model weights (~300 MB) are downloaded on first use and cached locally.
+
+---
+
+## Dependencies
+
+All Python dependencies are managed by `uv` and declared in `pyproject.toml`.
+
+### Always installed
+
+| Package | Purpose | AI/ML? |
+|---|---|---|
+| `typer`, `click` | CLI framework | No |
+| `rich` | Terminal output formatting | No |
+| `pillow` | Renders each slide to a 1280×720 PNG | No |
+| `imageio-ffmpeg` | Bundles ffmpeg; assembles PNGs + audio into MP4 | No |
+| `python-pptx` | Reads and writes PPTX files | No |
+| `pypdf` | Extracts text and embedded images from PDFs | No |
+| `pyyaml` | Parses YAML slide decks | No |
+| `soundfile`, `numpy` | WAV audio I/O | No |
+| `pyttsx3` | Rule-based TTS via the system `espeak-ng` engine (fallback) | No |
+| `ollama` | Python client for a locally running Ollama LLM server | **Yes** — local LLM |
+
+### Optional — Kokoro neural TTS
+
+Installed automatically on first use of `--engine kokoro`:
+
+| Package | Purpose | AI/ML? |
+|---|---|---|
+| `kokoro-onnx` | Neural TTS model, runs fully offline via ONNX Runtime | **Yes** — neural TTS |
+| `misaki[en]` | Grapheme-to-phoneme text normaliser for Kokoro | **Yes** — ML-based |
+
+### AI/ML usage summary
+
+Everything runs **100% on your machine** — no cloud APIs, no keys, no internet
+required after the initial one-time model download.
+
+| Component | When used | Model size |
+|---|---|---|
+| **Kokoro TTS** | `--engine kokoro` | ~300 MB (ONNX, cached after first run) |
+| **Ollama LLM** | `paper-to-slides` slide planning; `--process` / `--summarize` flags | Depends on which model you pull locally |
+| **pyttsx3 / espeak-ng** | Default TTS (no `--engine` flag) | None — rule-based |
 
 ---
 
