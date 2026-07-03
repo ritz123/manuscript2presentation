@@ -335,10 +335,12 @@ def _render_content_slide(slide, title, tag, bullets, narration,
             panel_h = int(content_bot - IMG_TOP)
             panel_w = int(IMG_W)
 
-            # scale to fit panel preserving aspect ratio
-            scale = min(panel_w / iw, panel_h / ih, 1.0)
-            nw = max(1, int(iw * scale))
-            nh = max(1, int(ih * scale))
+            # scale to fit panel preserving aspect ratio.
+            # panel_w/panel_h are in EMU; iw/ih are in pixels — the ratio
+            # gives EMU-per-pixel, producing nw/nh in EMU as required by add_picture.
+            scale = min(panel_w / iw, panel_h / ih)
+            nw = max(914, int(iw * scale))   # at least 0.001" (1 px guard)
+            nh = max(914, int(ih * scale))
 
             # tinted background for image area
             _add_rect(slide, IMG_X - Inches(0.1), IMG_TOP - Inches(0.1),
