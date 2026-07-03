@@ -1,7 +1,7 @@
 [project]
-name = "text2speech"
+name = "manuscript2presentation"
 version = "0.1.0"
-description = "Convert text to speech using locally running Ollama models for text processing"
+description = "Convert manuscripts and documents into narrated video presentations, entirely offline"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

@@ -1,4 +1,4 @@
-# text2speech
+# manuscript2presentation
 
 Convert any document into a **narrated video presentation** — entirely offline.
 
