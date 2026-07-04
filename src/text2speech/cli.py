@@ -959,11 +959,24 @@ Paper summary:
     # Strip markdown code fences if the model wrapped the JSON
     raw = re.sub(r"```(?:json)?\s*", "", raw).strip().rstrip("`").strip()
 
-    # Extract the JSON array (in case there's any leading/trailing prose)
-    match = re.search(r"\[.*\]", raw, re.DOTALL)
-    if not match:
-        _abort("Ollama did not return a valid JSON array. Try a different model or check Ollama is working.")
-    json_str = match.group()
+    # Extract all top-level JSON arrays and merge them into one.
+    # Some models emit multiple arrays (e.g. two chunks of slides) instead of one.
+    array_matches = list(re.finditer(r"\[.*?\](?=\s*(?:\[|$))", raw, re.DOTALL))
+    if not array_matches:
+        # Fall back: grab everything from first '[' to last ']'
+        match = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not match:
+            _abort("Ollama did not return a valid JSON array. Try a different model or check Ollama is working.")
+        json_str = match.group()
+    elif len(array_matches) == 1:
+        json_str = array_matches[0].group()
+    else:
+        # Merge multiple arrays: strip outer brackets and join into one array
+        inner_parts = []
+        for m in array_matches:
+            inner = m.group().strip()
+            inner_parts.append(inner[1:-1].strip())  # strip leading [ and trailing ]
+        json_str = "[" + ",\n".join(p for p in inner_parts if p) + "]"
 
     def _fix_json(s: str) -> str:
         """Fix common LLM JSON issues: trailing commas, missing commas, Python literals, smart quotes."""
