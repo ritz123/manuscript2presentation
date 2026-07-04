@@ -16,11 +16,24 @@ PYPI="--default-index https://pypi.org/simple"
 OUTPUT_DIR="$SCRIPT_DIR/output"
 
 # ── bootstrap ─────────────────────────────────────────────────────────────────
+# Detect a stale venv: exists but its shebang points to a different directory
+# (happens after the project folder is renamed or moved).
+_venv_stale() {
+    [[ ! -x "$T2S" ]] && return 0
+    head -1 "$T2S" 2>/dev/null | grep -qF "$VENV" || return 0
+    return 1
+}
 
-if [[ ! -x "$T2S" ]]; then
-    echo "Setting up environment (first run)..."
-    uv pip install $PYPI ollama pyttsx3 typer rich soundfile numpy click kokoro-onnx "misaki[en]" python-pptx pypdf pypdfium2 imageio-ffmpeg pillow pyyaml
-    uv pip install $PYPI -e .
+if _venv_stale; then
+    if [[ -d "$VENV" ]]; then
+        echo "Detected stale virtual environment (project was renamed/moved). Recreating..."
+        rm -rf "$VENV"
+    else
+        echo "Setting up environment (first run)..."
+    fi
+    uv venv "$VENV"
+    uv pip install --python "$VENV/bin/python" $PYPI ollama pyttsx3 typer rich soundfile numpy click kokoro-onnx "misaki[en]" python-pptx pypdf pypdfium2 imageio-ffmpeg pillow pyyaml
+    uv pip install --python "$VENV/bin/python" $PYPI -e .
     echo ""
     echo "Ready. Kokoro model files (~300 MB) will be downloaded on first speak."
     echo ""

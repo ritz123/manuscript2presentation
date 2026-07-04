@@ -99,7 +99,7 @@ python3 -c "import json; d=json.load(open('/tmp/plan.json')); print(len(d), 'sli
 Use the actual paths from the user's workspace (`pdf_path` must point to the original PDF so figures can be extracted):
 
 ```bash
-cd /userworkqum/bisarkar/text2speech && source .venv/bin/activate
+cd /userworkqum/bisarkar/Fun/manuscript2presentation && source .venv/bin/activate
 python3 - <<'EOF'
 import json, warnings
 from pathlib import Path

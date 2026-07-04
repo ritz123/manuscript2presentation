@@ -895,30 +895,64 @@ def paper_to_slides(
         figure_catalog = ""
         image_rule = '- "image_page": omit (no figures detected in this document)'
 
-    # ── Step 2: call Ollama to generate slide plan ────────────────────────────
-    console.print(f"\n[bold]Step 2/3[/] Generating slide plan with [green]{model}[/]…")
+    # ── Step 2a: summarise the paper ─────────────────────────────────────────
+    # Chunk the full text so long papers aren't silently truncated.
+    CHUNK = 35_000
+    chunks = [full_text[i : i + CHUNK] for i in range(0, len(full_text), CHUNK)]
+    console.print(
+        f"\n[bold]Step 2a/3[/] Summarising paper with [green]{model}[/] "
+        f"({len(chunks)} chunk{'s' if len(chunks) != 1 else ''})…"
+    )
 
-    prompt = f"""You are a presentation designer. Read the document below and produce a slide plan as a JSON array.
+    try:
+        import ollama as _ollama
+    except ImportError:
+        _abort("ollama is required. Run: uv pip install ollama")
+
+    def _ollama_call(prompt_text: str) -> str:
+        with console.status(f"  Calling {model}…"):
+            resp = _ollama.generate(model=model, prompt=prompt_text)
+        return resp.response if hasattr(resp, "response") else resp["response"]
+
+    summary_prompt = (
+        "You are a research assistant. Read the document excerpt(s) below and write a structured summary "
+        "covering: (1) the problem or research question, (2) the approach or methods, "
+        "(3) key results or findings, (4) main contributions or conclusions. "
+        "Be concise but complete — this summary will be used to create a presentation. "
+        "Output plain prose, no JSON.\n\n"
+    )
+    for idx, chunk in enumerate(chunks):
+        label = f"[Part {idx + 1}/{len(chunks)}]" if len(chunks) > 1 else ""
+        summary_prompt += f"=== DOCUMENT {label} ===\n{chunk}\n\n"
+
+    try:
+        paper_summary = _ollama_call(summary_prompt)
+    except Exception as e:
+        _abort(f"Ollama call failed: {e}\nMake sure Ollama is running and '{model}' is pulled.")
+
+    console.print(f"  [green]✓[/] Summary: {len(paper_summary):,} characters")
+
+    # ── Step 2b: generate slide plan from summary ─────────────────────────────
+    console.print(f"\n[bold]Step 2b/3[/] Planning {n_slides} slides with [green]{model}[/]…")
+
+    plan_prompt = f"""You are a presentation designer. Using the paper summary below, produce a slide plan as a JSON array.
 
 Rules:
 - {n_slides} slides total (first = title/overview, last = conclusions/takeaways)
 - "title": short slide title (<= 8 words)
 - "tag": optional short section label in ALL CAPS (e.g. "OVERVIEW", "METHOD")
 - "bullets": 4-6 concise on-slide points (<= 12 words each, no full sentences)
-- "narration": 3-5 full spoken sentences expanding on the bullets
+- "narration": 3-5 full spoken sentences that read as natural speech, not bullet-point prose
 - {image_rule}
 - Output ONLY valid JSON array, no markdown, no prose
 
 {figure_catalog}
 
-Document:
-{full_text[:40000]}"""
+Paper summary:
+{paper_summary}"""
 
     try:
-        import ollama as _ollama
-        with console.status(f"  Calling {model}…"):
-            response = _ollama.generate(model=model, prompt=prompt)
-        raw = response.response if hasattr(response, "response") else response["response"]
+        raw = _ollama_call(plan_prompt)
     except Exception as e:
         _abort(f"Ollama call failed: {e}\nMake sure Ollama is running and '{model}' is pulled.")
 
@@ -1023,16 +1057,60 @@ Document:
     # ── Optional: render video ─────────────────────────────────────────────────
     if video:
         console.print(f"\n[bold]Bonus[/] Rendering narrated video…")
-        voice_args = ["--voice", voice] if voice else []
-        import subprocess, sys as _sys
-        cmd = [_sys.executable, "-m", "text2speech.cli",
-               "canvas-video", str(pptx_out),
-               "--engine", engine,
-               "--output", str(pptx_out.with_suffix(".mp4")),
-               *voice_args]
-        result = subprocess.run(cmd)
-        if result.returncode == 0:
-            console.print(f"  [green]✓[/] Video: {pptx_out.with_suffix('.mp4')}")
+        mp4_out = pptx_out.with_suffix(".mp4")
+        try:
+            import shutil as _shutil
+            import tempfile as _tempfile
+
+            from text2speech.canvas_video import (
+                assemble_video,
+                generate_audio,
+                render_slide,
+                slides_from_presentation,
+            )
+
+            tts = _build_engine(EngineChoice(engine), rate=160, volume=1.0, voice_id=voice)
+            all_slides = slides_from_presentation(pptx_out)
+
+            if not all_slides:
+                raise RuntimeError("No slides found in the PPTX.")
+
+            _work = Path(_tempfile.mkdtemp(prefix="t2s_video_"))
+            img_dir = _work / "images"
+            aud_dir = _work / "audio"
+            img_dir.mkdir()
+            aud_dir.mkdir()
+
+            try:
+                console.print("  [bold]Rendering slide images…[/]")
+                for spec in all_slides:
+                    img_path = img_dir / f"slide_{spec.index:02d}.png"
+                    with console.status(f"    Slide {spec.index}: {spec.title[:50]}…"):
+                        render_slide(spec, img_path, total=len(all_slides))
+                    console.print(f"    [green]✓[/] Slide {spec.index}")
+
+                console.print("  [bold]Generating narration audio…[/]")
+                for spec in all_slides:
+                    aud_path = aud_dir / f"slide_{spec.index:02d}.wav"
+                    with console.status(f"    Slide {spec.index}: narrating…"):
+                        generate_audio(spec, aud_path, tts)
+                    console.print(f"    [green]✓[/] Slide {spec.index}")
+
+                console.print("  [bold]Assembling video…[/]")
+                with console.status("    Running ffmpeg…"):
+                    assemble_video(all_slides, img_dir, aud_dir, mp4_out)
+
+            finally:
+                _shutil.rmtree(_work, ignore_errors=True)
+
+            if mp4_out.exists() and mp4_out.stat().st_size > 0:
+                console.print(f"  [green]✓[/] Video: {mp4_out}")
+            else:
+                raise RuntimeError("ffmpeg finished but the output file was not created.")
+
+        except Exception as _e:
+            console.print(f"  [yellow]⚠[/] Video rendering failed: {_e}")
+            console.print(f"  [dim]Re-run manually: ./run.sh {pptx_out} --slide --engine {engine}[/]")
 
     console.print(f"\n[bold green]Done![/]")
     console.print(f"  PPTX:  {pptx_out}")
