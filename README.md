@@ -57,21 +57,30 @@ working mental model of what the paper claims to do and how.
 
 ---
 
-### Phase 2 — Review comments (10–15 min)
+### Phase 2 — AI-assisted structured review (10–15 min)
 
-Read the review comments with targeted focus.  For each comment, anchor it to
-one of these five lenses:
+Let the Cursor agent generate a full structured review using the
+`ai-dm-paper-review` skill.  Attach the PDF in the Cursor chat and ask:
 
-| Lens | What to look for |
+```
+Review paper.pdf using the ai-dm-paper-review skill
+```
+
+The agent produces a rigorous review covering:
+
+| Section | What it covers |
 |---|---|
 | **Research question** | Is the RQ clearly stated? Is it novel and scoped correctly? |
 | **Abstract** | Does the abstract accurately reflect the contributions and findings? |
 | **Experiment setup** | Are baselines fair, datasets appropriate, ablations present? |
 | **Findings** | Are claims supported by the evidence shown? Are limitations acknowledged? |
 | **Methodology** | Is the approach sound, reproducible, and well-motivated? |
+| **Citations** | Bibliographic correctness, relevance, in-text usage — verified online |
+| **Novelty** | What is genuinely new vs incremental |
+| **Score & recommendation** | Accept / Weak Accept / Borderline / Weak Reject / Reject |
 
-Take short notes per lens.  The goal is to know *what to look for* in Phase 3,
-not to form a verdict yet.
+Read the generated review carefully and take notes on the flagged issues.
+The goal is to know *what to look for* in Phase 3, not to form a verdict yet.
 
 ---
 
@@ -307,7 +316,9 @@ text2speech/
 │   ├── canvas_video.py             # Renders slides to PNG + assembles MP4
 │   ├── slides.py                   # PPTX / PDF / YAML reader → SlideSpec objects
 │   └── tts.py                      # TTS engine abstraction (Kokoro / pyttsx3)
-├── .cursor/skills/paper-to-slides/ # /paper-to-slides Cursor skill
+├── .cursor/skills/paper-to-slides/    # Cursor skill: PDF → PPTX via Claude
+│   └── SKILL.md
+├── .cursor/skills/ai-dm-paper-review/ # Cursor skill: structured academic review
 │   └── SKILL.md
 ├── data/                           # Generated PPTX files
 └── output/                         # Generated MP4 videos
