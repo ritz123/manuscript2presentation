@@ -33,31 +33,86 @@ Output goes to `output/<timestamp>_<name>.mp4` by default.
 
 ---
 
+## Workflow: Paper reviewer
+
+When reviewing a paper, use this three-phase approach to build understanding
+quickly before forming an opinion.
+
+### Phase 1 — AI overview (5 min)
+
+Generate a narrated presentation from the manuscript.  This gives you a
+structured visual summary of the paper — problem, method, results, figures —
+before you read a single sentence yourself.
+
+```bash
+./run.sh paper.pdf --paper
+# Opens a 10–14 slide narrated MP4 covering the full paper
+```
+
+> **Tip:** Use `--n-slides 10` for short papers and `--n-slides 14` for long
+> ones.  Add `--no-video` if you only want the PPTX to click through manually.
+
+Watch or step through the output.  By the end of Phase 1 you should have a
+working mental model of what the paper claims to do and how.
+
+---
+
+### Phase 2 — Review comments (10–15 min)
+
+Read the review comments with targeted focus.  For each comment, anchor it to
+one of these five lenses:
+
+| Lens | What to look for |
+|---|---|
+| **Research question** | Is the RQ clearly stated? Is it novel and scoped correctly? |
+| **Abstract** | Does the abstract accurately reflect the contributions and findings? |
+| **Experiment setup** | Are baselines fair, datasets appropriate, ablations present? |
+| **Findings** | Are claims supported by the evidence shown? Are limitations acknowledged? |
+| **Methodology** | Is the approach sound, reproducible, and well-motivated? |
+
+Take short notes per lens.  The goal is to know *what to look for* in Phase 3,
+not to form a verdict yet.
+
+---
+
+### Phase 3 — Full read (remaining time)
+
+Read the manuscript from start to finish with your Phase 2 notes in hand.
+Focus attention on the sections flagged by reviewer comments.  Verify claims
+against figures and tables directly.
+
+By this point the narrative is already familiar from Phase 1, so the full read
+is fast and purposeful rather than exploratory.
+
+---
+
 ## PDF manuscript → slides (recommended: Claude plans)
 
 The highest-quality workflow has **Claude read the PDF and write the slide plan** directly.
-No Ollama required — invoke the `/paper-to-slides` skill in Cursor:
+No Ollama required. The `paper-to-slides` Agent Skill handles the full pipeline
+when you ask the Cursor agent in chat:
 
 ```
-paper.pdf ──► Claude reads & plans ──► JSON slide plan
+paper.pdf ──► extract text ──► Claude reads & plans ──► /tmp/plan.json
            ──► pptx_builder → styled PPTX (bullets + figures + narration in Notes)
+           ──► (optional) ./run.sh → narrated MP4
 ```
 
-```bash
-# Step 1: Claude generates the JSON plan (via /paper-to-slides skill)
-# Step 2: Build the PPTX
-python3 - <<'EOF'
-import json, warnings
-from pathlib import Path
-warnings.filterwarnings("ignore", message=".*Lookup Table.*")
-from text2speech.pptx_builder import build_pptx
-plan = json.load(open("/tmp/plan.json"))
-build_pptx(plan, Path("data/my-talk.pptx"), Path("paper.pdf"))
-EOF
+**How to use it:** open the Cursor chat, attach or mention your PDF, and ask:
 
-# Step 3 (optional): Render narrated video from the PPTX
-./run.sh data/my-talk.pptx --engine kokoro --voice bm_george
 ```
+Convert paper.pdf into a slide deck
+```
+
+The agent will automatically:
+1. Extract text and detect figure pages from the PDF
+2. Read the full document and write a JSON slide plan to `/tmp/plan.json`
+3. Call `pptx_builder` to build the styled PPTX
+4. Optionally render the narrated MP4 via `./run.sh`
+
+> This produces better slides than the Ollama pipeline because Claude
+> understands argument structure, figures out what's important, and writes
+> narration that reads as natural speech.
 
 ### What each slide plan field controls
 
