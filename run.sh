@@ -8,6 +8,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve the first argument to an absolute path BEFORE cd changes the CWD.
+# This ensures relative paths like ./paper.pdf work regardless of where the
+# script is invoked from.
+if [[ -n "${1:-}" && "${1:-}" != --* && -e "$1" ]]; then
+    _ABS="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+    set -- "$_ABS" "${@:2}"
+fi
+
 cd "$SCRIPT_DIR"
 
 VENV="$SCRIPT_DIR/.venv"
