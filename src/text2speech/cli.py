@@ -1152,3 +1152,253 @@ def download_models() -> None:
         console.print("[bold green]Download complete![/] Kokoro engine is ready.")
     except Exception as e:
         _abort(f"Download failed: {e}")
+
+
+# ── paper-review tool functions ────────────────────────────────────────────────
+
+def _web_search(query: str, max_results: int = 5) -> str:
+    """Search the web via DuckDuckGo (no API key required)."""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+        if not results:
+            return "No results found."
+        lines = []
+        for r in results:
+            lines.append(f"Title: {r.get('title', '').strip()}")
+            lines.append(f"URL:   {r.get('href', '').strip()}")
+            lines.append(f"Snippet: {r.get('body', '').strip()}")
+            lines.append("")
+        return "\n".join(lines).strip()
+    except ImportError:
+        return "duckduckgo_search not installed. Run: uv pip install duckduckgo-search"
+    except Exception as e:
+        return f"Search failed: {e}"
+
+
+def _fetch_url(url: str, max_chars: int = 4000) -> str:
+    """Fetch a URL and return its cleaned text (strips HTML tags)."""
+    import re
+    try:
+        import requests as _requests
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; paper-reviewer/1.0)"}
+        resp = _requests.get(url, headers=headers, timeout=12)
+        resp.raise_for_status()
+        text = re.sub(r"<[^>]+>", " ", resp.text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:max_chars]
+    except ImportError:
+        return "requests not installed. Run: uv pip install requests"
+    except Exception as e:
+        return f"Fetch failed: {e}"
+
+
+def _run_review_agent(
+    model: str,
+    paper_text: str,
+    system_prompt: str,
+    web: bool,
+    max_tool_rounds: int = 30,
+) -> str:
+    """
+    ReAct agent loop: call Ollama chat with optional web_search / fetch_url tools.
+    Returns the final review text.
+    """
+    try:
+        import ollama as _ollama
+    except ImportError:
+        return "ollama package not found. Run: uv pip install ollama"
+
+    tools = []
+    tool_functions: dict = {}
+
+    if web:
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": (
+                        "Search the web for papers, authors, DOIs, or citation details. "
+                        "Use this to verify bibliographic metadata or find missing references."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search query, e.g. 'Smith 2020 attention mechanism NeurIPS'",
+                            }
+                        },
+                        "required": ["query"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "fetch_url",
+                    "description": (
+                        "Fetch the content of a URL. Use this to verify a DOI record, "
+                        "check a publisher page, or read an abstract."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "Full URL to fetch, e.g. 'https://doi.org/10.1234/example'",
+                            }
+                        },
+                        "required": ["url"],
+                    },
+                },
+            },
+        ]
+        tool_functions = {
+            "web_search": lambda a: _web_search(a.get("query", "")),
+            "fetch_url":  lambda a: _fetch_url(a.get("url", "")),
+        }
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": (
+                "Please review the following paper according to your instructions.\n\n"
+                f"=== PAPER TEXT ===\n{paper_text[:50_000]}"
+            ),
+        },
+    ]
+
+    for _round in range(max_tool_rounds):
+        kwargs: dict = {"model": model, "messages": messages}
+        if tools:
+            kwargs["tools"] = tools
+
+        resp = _ollama.chat(**kwargs)
+        msg  = resp.message
+
+        # Build the assistant message dict carefully
+        asst: dict = {"role": "assistant", "content": msg.content or ""}
+        if msg.tool_calls:
+            asst["tool_calls"] = [
+                {
+                    "id": getattr(tc, "id", f"call_{i}"),
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for i, tc in enumerate(msg.tool_calls)
+            ]
+        messages.append(asst)
+
+        if not msg.tool_calls:
+            return msg.content or ""
+
+        # Execute each tool call and append results
+        for i, tc in enumerate(msg.tool_calls):
+            fn   = tc.function.name
+            args = tc.function.arguments if isinstance(tc.function.arguments, dict) else {}
+            result = tool_functions.get(fn, lambda _: f"Unknown tool: {fn}")(args)
+            console.print(f"  [dim]→ {fn}({list(args.values())[0] if args else ''})[/]")
+            messages.append({
+                "role":       "tool",
+                "tool_call_id": getattr(tc, "id", f"call_{i}"),
+                "content":    str(result),
+            })
+
+    return "Review agent hit the maximum tool-call limit without finishing."
+
+
+@app.command("paper-review")
+def paper_review(
+    pdf_file: Annotated[Path, typer.Argument(help="PDF manuscript to review")],
+    model: Annotated[str, typer.Option("--model", "-m", help="Ollama model")] = "llama3.2",
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output markdown path")] = None,
+    no_web: Annotated[bool, typer.Option("--no-web", help="Disable internet tools (offline mode)")] = False,
+    max_chars: Annotated[int, typer.Option("--max-chars", help="Max PDF characters sent to the model")] = 50_000,
+) -> None:
+    """
+    Generate a structured academic review of a PDF manuscript using a local Ollama model.
+
+    The model is given web_search and fetch_url tools so it can verify citations
+    and look up DOI records during the review (pass --no-web to disable).
+
+    [bold]Examples:[/]
+
+      t2s paper-review paper.pdf
+
+      t2s paper-review paper.pdf --model qwen2.5:72b
+
+      t2s paper-review paper.pdf --no-web --output review.md
+    """
+    import warnings as _warnings
+
+    if not pdf_file.exists():
+        _abort(f"File not found: {pdf_file}")
+    if pdf_file.suffix.lower() != ".pdf":
+        _abort(f"Expected a .pdf file, got: {pdf_file}")
+
+    out_path = output or pdf_file.with_stem(pdf_file.stem + "_review").with_suffix(".md")
+
+    # ── Step 1: extract PDF text ───────────────────────────────────────────────
+    console.print(f"\n[bold]Step 1/2[/] Extracting text from [cyan]{pdf_file.name}[/]…")
+    try:
+        import pypdf as _pypdf
+    except ImportError:
+        _abort("pypdf is required. Run: uv pip install pypdf")
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        reader = _pypdf.PdfReader(str(pdf_file))
+        pages  = [p.extract_text() or "" for p in reader.pages]
+    full_text = "\n\n--- PAGE BREAK ---\n\n".join(pages)
+    console.print(f"  [green]✓[/] {len(reader.pages)} pages, {len(full_text):,} characters")
+
+    # ── Step 2: run review agent ───────────────────────────────────────────────
+    web_label = "[green]web tools ON[/]" if not no_web else "[yellow]web tools OFF (offline)[/]"
+    console.print(f"\n[bold]Step 2/2[/] Reviewing with [green]{model}[/] — {web_label}…")
+    if not no_web:
+        console.print("  [dim]The model may call web_search / fetch_url to verify citations.[/]")
+
+    # Load the review skill prompt from the bundled SKILL.md
+    _skill_path = Path(__file__).parent.parent.parent / ".cursor" / "skills" / "ai-dm-paper-review" / "SKILL.md"
+    if _skill_path.exists():
+        raw_skill = _skill_path.read_text()
+        # Strip the YAML front-matter (--- ... ---) if present
+        import re as _re
+        system_prompt = _re.sub(r"^---.*?---\s*", "", raw_skill, flags=_re.DOTALL).strip()
+    else:
+        # Fallback: embedded minimal prompt
+        system_prompt = (
+            "You are an expert academic reviewer. Produce a structured review covering: "
+            "1. Summary, 2. Strengths, 3. Technical correctness, 4. Consistency, "
+            "5. Clarity, 6. Research integrity, 7. Citations (verify online), "
+            "8. Authenticity, 9. Novelty, 10. Fit for venue, 11. Gaps, "
+            "12. Suggestions, 13. Overall score (1-10) and recommendation "
+            "(Accept / Weak Accept / Borderline / Weak Reject / Reject)."
+        )
+
+    try:
+        review_text = _run_review_agent(
+            model=model,
+            paper_text=full_text[:max_chars],
+            system_prompt=system_prompt,
+            web=not no_web,
+        )
+    except Exception as e:
+        _abort(f"Review agent failed: {e}\nMake sure Ollama is running and '{model}' is pulled.")
+
+    # ── Write output ───────────────────────────────────────────────────────────
+    out_path.write_text(review_text, encoding="utf-8")
+    console.print(
+        Panel(
+            f"[bold green]Review saved:[/] {out_path}\n"
+            f"[dim]{model} · {len(review_text):,} characters[/]",
+            border_style="green",
+        )
+    )

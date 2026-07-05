@@ -59,14 +59,34 @@ working mental model of what the paper claims to do and how.
 
 ### Phase 2 — AI-assisted structured review (10–15 min)
 
-Let the Cursor agent generate a full structured review using the
-`ai-dm-paper-review` skill.  Attach the PDF in the Cursor chat and ask:
+Two options depending on whether you are inside Cursor or at the terminal:
+
+**Option A — terminal (Ollama, web-enabled):**
+
+```bash
+./run.sh paper.pdf --review
+# Saves paper_review.md next to the PDF
+
+# Use a larger model for better quality
+./run.sh paper.pdf --review --model qwen2.5:72b
+
+# Offline — skips citation verification
+./run.sh paper.pdf --review --no-web
+```
+
+The Ollama model is given `web_search` and `fetch_url` tools so it can look up
+DOI records and verify citations during the review.  Output is a structured
+markdown file covering all sections of the `ai-dm-paper-review` skill.
+
+**Option B — Cursor chat (Claude, highest quality):**
+
+Attach the PDF in the Cursor chat and ask:
 
 ```
 Review paper.pdf using the ai-dm-paper-review skill
 ```
 
-The agent produces a rigorous review covering:
+Both options produce a review covering:
 
 | Section | What it covers |
 |---|---|
@@ -79,8 +99,7 @@ The agent produces a rigorous review covering:
 | **Novelty** | What is genuinely new vs incremental |
 | **Score & recommendation** | Accept / Weak Accept / Borderline / Weak Reject / Reject |
 
-Read the generated review carefully and take notes on the flagged issues.
-The goal is to know *what to look for* in Phase 3, not to form a verdict yet.
+Read the generated review and take notes on flagged issues before Phase 3.
 
 ---
 

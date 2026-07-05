@@ -32,7 +32,7 @@ if _venv_stale; then
         echo "Setting up environment (first run)..."
     fi
     uv venv "$VENV"
-    uv pip install --python "$VENV/bin/python" $PYPI ollama pyttsx3 typer rich soundfile numpy click kokoro-onnx "misaki[en]" python-pptx pypdf pypdfium2 imageio-ffmpeg pillow pyyaml
+    uv pip install --python "$VENV/bin/python" $PYPI ollama pyttsx3 typer rich soundfile numpy click kokoro-onnx "misaki[en]" python-pptx pypdf pypdfium2 imageio-ffmpeg pillow pyyaml duckduckgo-search requests
     uv pip install --python "$VENV/bin/python" $PYPI -e .
     echo ""
     echo "Ready. Kokoro model files (~300 MB) will be downloaded on first speak."
@@ -75,6 +75,15 @@ Usage: ./run.sh <input> --paper|--slide [OPTIONS]
   Note: --slide is the default for .pptx, .yaml, and .tsx files.
         For .pdf, use --paper or --slide explicitly.
 
+─── --review  (PDF manuscript → structured academic review .md) ────────────────
+  Uses a local Ollama LLM with web_search + fetch_url tools to produce a
+  structured review (summary, strengths, citations, score, recommendation).
+
+  ./run.sh paper.pdf --review
+  ./run.sh paper.pdf --review --model qwen2.5:72b
+  ./run.sh paper.pdf --review --no-web          # offline, skip citation lookup
+  ./run.sh paper.pdf --review --output rev.md
+
 ─── Other commands ─────────────────────────────────────────────────────────────
   ./run.sh speak "Hello world"
   ./run.sh speak-file notes.txt
@@ -82,6 +91,13 @@ Usage: ./run.sh <input> --paper|--slide [OPTIONS]
   ./run.sh download-models
 EOF
     exit 0
+fi
+
+# ── --review → structured academic review with web tools ─────────────────────
+if _has_flag "--review" "$@"; then
+    ARGS=()
+    for arg in "$@"; do [[ "$arg" != "--review" ]] && ARGS+=("$arg"); done
+    exec "$T2S" paper-review "${ARGS[@]}"
 fi
 
 # ── --paper → full LLM pipeline (manuscript → slides → video) ────────────────
