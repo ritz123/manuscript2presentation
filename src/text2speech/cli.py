@@ -798,12 +798,15 @@ def paper_to_slides(
     video: Annotated[bool, typer.Option("--video/--no-video", help="Render a narrated MP4 (default: on)")] = True,
     engine: Annotated[str, typer.Option("--engine", help="TTS engine for video: kokoro or pyttsx3")] = "kokoro",
     voice: Annotated[Optional[str], typer.Option("--voice", help="TTS voice ID")] = None,
+    review: Annotated[bool, typer.Option("--review/--no-review", help="Generate a structured review .md (default: on)")] = True,
+    review_no_web: Annotated[bool, typer.Option("--review-no-web", help="Disable web tools for the review (offline mode)")] = False,
 ) -> None:
     """
-    Convert a PDF manuscript into a styled PPTX presentation (and optionally a narrated video).
+    Convert a PDF manuscript into a styled PPTX presentation (and optionally a narrated video and review).
 
     Uses [bold green]Ollama[/] to intelligently plan slides from the document content,
     then builds a styled PPTX with bullets in the slide body and full narration in Notes.
+    Also runs the structured academic review agent by default.
 
     [bold]Examples:[/]
 
@@ -812,6 +815,8 @@ def paper_to_slides(
       t2s paper-to-slides paper.pdf --model llama3.2 --n-slides 10
 
       t2s paper-to-slides paper.pdf --video --engine kokoro --voice bm_george
+
+      t2s paper-to-slides paper.pdf --no-review   # skip the review step
     """
     import json
     import re
@@ -1125,9 +1130,49 @@ Paper summary:
             console.print(f"  [yellow]⚠[/] Video rendering failed: {_e}")
             console.print(f"  [dim]Re-run manually: ./run.sh {pptx_out} --slide --engine {engine}[/]")
 
+    # ── Optional: generate structured review ──────────────────────────────────
+    review_out: Optional[Path] = None
+    if review:
+        web_label = "web tools ON" if not review_no_web else "web tools OFF"
+        console.print(f"\n[bold]Review[/] Generating structured review with [green]{model}[/] ({web_label})…")
+        if not review_no_web:
+            console.print("  [dim]The model may call web_search / fetch_url to verify citations.[/]")
+        review_out = pdf_file.with_stem(pdf_file.stem + "_review").with_suffix(".md")
+        try:
+            _skill_path = (
+                Path(__file__).parent.parent.parent
+                / ".cursor" / "skills" / "ai-dm-paper-review" / "SKILL.md"
+            )
+            import re as _re2
+            if _skill_path.exists():
+                raw_skill = _skill_path.read_text()
+                _system_prompt = _re2.sub(r"^---.*?---\s*", "", raw_skill, flags=_re2.DOTALL).strip()
+            else:
+                _system_prompt = (
+                    "You are an expert academic reviewer. Produce a structured review covering: "
+                    "summary, strengths, technical correctness, consistency, clarity, research "
+                    "integrity, citations (verify online), authenticity, novelty, fit for venue, "
+                    "gaps, suggestions, and an overall score (1–10) with recommendation "
+                    "(Accept / Weak Accept / Borderline / Weak Reject / Reject)."
+                )
+            review_text = _run_review_agent(
+                model=model,
+                paper_text=full_text[:50_000],
+                system_prompt=_system_prompt,
+                web=not review_no_web,
+            )
+            review_out.write_text(review_text, encoding="utf-8")
+            console.print(f"  [green]✓[/] Review: {review_out}")
+        except Exception as _re:
+            console.print(f"  [yellow]⚠[/] Review failed: {_re}")
+            console.print(f"  [dim]Re-run manually: ./run.sh {pdf_file} --review --model {model}[/]")
+            review_out = None
+
     console.print(f"\n[bold green]Done![/]")
-    console.print(f"  PPTX:  {pptx_out}")
-    console.print(f"  Video: [dim]./run.sh {pptx_out} --engine kokoro[/]  (to generate later)")
+    console.print(f"  PPTX:   {pptx_out}")
+    if review_out and review_out.exists():
+        console.print(f"  Review: {review_out}")
+    console.print(f"  Video:  [dim]./run.sh {pptx_out} --engine kokoro[/]  (to generate later)")
 
 
 @app.command("download-models")

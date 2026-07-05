@@ -20,10 +20,12 @@ synchronized voice-over, rendered slides, and embedded figures.
 ./run.sh slides.pptx --engine kokoro
 
 # ── PDF manuscript → LLM → styled slides → narrated MP4 ─────────────────────
-./run.sh paper.pdf --paper
+./run.sh paper.pdf --paper                # slides + video + review (all on by default)
 ./run.sh paper.pdf --paper --model llama3.2 --n-slides 10
 ./run.sh paper.pdf --paper --engine kokoro --voice bm_george
-./run.sh paper.pdf --paper --no-video     # PPTX only, skip video
+./run.sh paper.pdf --paper --no-video     # PPTX + review, skip video
+./run.sh paper.pdf --paper --no-review    # PPTX + video, skip review
+./run.sh paper.pdf --paper --review-no-web  # review without internet (offline)
 ```
 
 > **PDF requires an explicit flag** — `--paper` for prose documents, `--slide`
