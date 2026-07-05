@@ -13,25 +13,25 @@ from pptx.util import Inches, Pt, Emu
 W = Inches(13.333)
 H = Inches(7.5)
 
-# ── Colour palette — deep slate + sky-blue ─────────────────────────────────────
+# ── Colour palette — dark charcoal + forest green ──────────────────────────────
 from pptx.dml.color import RGBColor
 
-C_BG       = RGBColor(0xF8, 0xFA, 0xFC)  # near-white, slight blue tint
-C_HEADER   = RGBColor(0x0F, 0x17, 0x2A)  # deep slate-navy
-C_HDR_MID  = RGBColor(0x1E, 0x29, 0x3B)  # lighter slate (depth band at top)
-C_SKY      = RGBColor(0x0E, 0xA5, 0xE9)  # sky-blue — single accent colour
-C_SKY_SOFT = RGBColor(0xE0, 0xF2, 0xFE)  # very light sky (image panel fill)
+C_BG       = RGBColor(0xF6, 0xFA, 0xF7)  # near-white, faint green tint
+C_HEADER   = RGBColor(0x14, 0x1A, 0x14)  # dark charcoal-forest
+C_HDR_MID  = RGBColor(0x22, 0x2E, 0x22)  # lighter charcoal (depth band at top)
+C_SKY      = RGBColor(0x16, 0xA3, 0x4A)  # emerald green — single accent colour
+C_SKY_SOFT = RGBColor(0xDC, 0xFC, 0xE7)  # very light green (image panel fill)
 C_TITLE    = RGBColor(0xFF, 0xFF, 0xFF)  # white
-C_TEXT     = RGBColor(0x1E, 0x29, 0x3B)  # dark slate body text
-C_SUB      = RGBColor(0x64, 0x74, 0x8B)  # slate-gray sub-bullet
-C_DIM      = RGBColor(0x94, 0xA3, 0xB8)  # muted counter / decorative
-C_RULE     = RGBColor(0xE2, 0xE8, 0xF0)  # light rule / progress track
+C_TEXT     = RGBColor(0x14, 0x23, 0x17)  # dark forest body text
+C_SUB      = RGBColor(0x4A, 0x64, 0x4E)  # muted forest-green sub-bullet
+C_DIM      = RGBColor(0x86, 0xAA, 0x8A)  # muted counter / decorative
+C_RULE     = RGBColor(0xD1, 0xE8, 0xD4)  # light green rule / progress track
 C_IMGBG    = RGBColor(0xFF, 0xFF, 0xFF)  # white image panel interior
-C_IMGBDR   = RGBColor(0x0E, 0xA5, 0xE9)  # sky-blue image border
+C_IMGBDR   = RGBColor(0x16, 0xA3, 0x4A)  # emerald green image border
 
 # backward-compat aliases used in canvas_video.py
 C_ACCENT  = C_SKY
-C_ACCENT2 = RGBColor(0x7D, 0xD3, 0xFC)  # light sky
+C_ACCENT2 = RGBColor(0x86, 0xEF, 0xAC)  # light green
 
 # ── Layout constants (Inches) ──────────────────────────────────────────────────
 HDR_H    = Inches(1.92)     # header height (tighter = more content space)
@@ -232,7 +232,7 @@ def _render_title_slide(slide, title, tag, bullets, narration, idx, total):
         tf3.word_wrap = True
         for j, b in enumerate(bullets[:4]):
             _para(tf3, "—  " + b.lstrip(), 14,
-                  color=RGBColor(0x93, 0xC5, 0xFD),
+                  color=RGBColor(0x86, 0xEF, 0xAC),
                   space_before_pt=(6 if j > 0 else 0))
 
     # ── right panel — decorative, clean ──────────────────────────────────────
